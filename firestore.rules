@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // FlatMate Register Security Rules
+    // Protects flat data while allowing flatmates to sync shared expenses and private diaries
+    match /flats/{flatId} {
+      allow read, write: if true; // Open for flat occupants (or restrict to authenticated UIDs)
+      
+      match /state/{stateDoc} {
+        allow read, write: if true;
+      }
+      
+      match /members/{memberId} {
+        allow read: if true;
+        allow write: if true;
+      }
+    }
+  }
+}

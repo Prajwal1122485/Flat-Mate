@@ -7,6 +7,7 @@ export interface Member {
   isHolder: boolean;
   avatarBg?: string;
   monthlyBudget?: number;
+  passcode?: string; // optional private PIN/passcode
 }
 
 export type ExpenseCategory =
@@ -29,6 +30,9 @@ export interface RecurringBill {
   splitMemberIds: string[]; // members who share this bill
   payerId: string; // usually Holder
   notes?: string;
+  depositAmount?: number; // e.g., ₹18,000 remaining deposit to give
+  firstMonthAmount?: number; // e.g., ₹1,500 washing machine (includes deposit) or ₹12,000 rent
+  regularMonthlyAmount?: number; // e.g., ₹500 next month washing machine, ₹12,000 rent
   lastReminderSentAt?: string;
 }
 
@@ -41,6 +45,7 @@ export interface Expense {
   createdAt: string; // ISO date string
   mode: 'split' | 'solo';
   splitMemberIds: string[];
+  customSplits?: Record<string, number>; // optional custom exact amount per member
   notes?: string;
   isRecurringGenerated?: boolean;
 }
@@ -52,9 +57,10 @@ export interface ExpenseShare {
   expenseId: string;
   expenseTitle: string;
   category: ExpenseCategory;
-  debtorId: string; // Person who owes money
-  creditorId: string; // Person who should receive money (e.g., Holder)
+  debtorId: string; // Paying member (who has to give money)
+  creditorId: string; // Receiving member (who should receive money)
   amount: number; // Share in INR
+  partialPaidAmount?: number; // If they paid half, amount already paid
   status: ShareStatus;
   createdAt: string;
   claimedAt?: string;

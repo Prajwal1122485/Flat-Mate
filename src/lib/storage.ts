@@ -26,10 +26,11 @@ export interface AppState {
   chores: FlatChore[];
   contacts: FlatContact[];
   notices: FlatNotice[];
+  holderPasscode?: string; // Changeable master passcode (default: '1234')
   lastUpdated: string;
 }
 
-const STORAGE_KEY = 'FLATMATE_REGISTER_DATA_V2';
+const STORAGE_KEY = 'FLATMATE_REGISTER_DATA_V3';
 
 // Initial realistic seed data
 export const DEFAULT_MEMBERS: Member[] = [
@@ -40,7 +41,7 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'prajwal@upi',
     isHolder: true,
     avatarBg: 'bg-indigo-600',
-    monthlyBudget: 15000,
+    monthlyBudget: undefined, // Optional: can be Nil, 1k, 2k, etc.
   },
   {
     id: 'mem_rohan',
@@ -49,7 +50,7 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'rohan.kumar@okhdfcbank',
     isHolder: false,
     avatarBg: 'bg-emerald-600',
-    monthlyBudget: 9000,
+    monthlyBudget: undefined,
   },
   {
     id: 'mem_amit',
@@ -58,7 +59,7 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'amit.verma@paytm',
     isHolder: false,
     avatarBg: 'bg-amber-600',
-    monthlyBudget: 8500,
+    monthlyBudget: undefined,
   },
   {
     id: 'mem_vikram',
@@ -67,7 +68,7 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'vikram.singh@ybl',
     isHolder: false,
     avatarBg: 'bg-sky-600',
-    monthlyBudget: 9500,
+    monthlyBudget: undefined,
   },
   {
     id: 'mem_karthik',
@@ -76,7 +77,7 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'karthik.r@icici',
     isHolder: false,
     avatarBg: 'bg-purple-600',
-    monthlyBudget: 8000,
+    monthlyBudget: undefined,
   },
   {
     id: 'mem_sneha',
@@ -85,18 +86,21 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'sneha.patil@axisbank',
     isHolder: false,
     avatarBg: 'bg-rose-600',
-    monthlyBudget: 9000,
+    monthlyBudget: undefined,
   },
 ];
 
 export const DEFAULT_RECURRING_BILLS: RecurringBill[] = [
   {
     id: 'rec_rent',
-    title: 'Flat House Rent',
-    amount: 30000, // Due on 11th
+    title: 'Flat House Rent & Deposit',
+    amount: 12000, // Due on 11th
     dueDay: 11,
     category: 'Rent',
     reminderDaysBefore: 3,
+    firstMonthAmount: 12000, // Month 1 given ₹12,000 towards deposit/rent
+    depositAmount: 18000, // Remaining ₹18,000 deposit to be paid next month
+    regularMonthlyAmount: 12000, // Rent from next month is ₹12,000 (total due next month: 12k rent + 18k deposit)
     splitMemberIds: [
       'mem_prajwal',
       'mem_rohan',
@@ -106,36 +110,20 @@ export const DEFAULT_RECURRING_BILLS: RecurringBill[] = [
       'mem_sneha',
     ],
     payerId: 'mem_prajwal',
-    notes: 'Landlord NEFT transfer by Prajwal on 11th',
+    notes: 'Total deposit ₹30,000 (Given ₹12,000 now, remaining ₹18,000 deposit + ₹12,000 rent due next month on 11th)',
   },
   {
     id: 'rec_appliances',
-    title: 'Washing Machine & Fridge Rental',
-    amount: 1800, // Due on 15th
+    title: 'Washing Machine Rent',
+    amount: 1500, // Due on 15th (1st month is ₹1500 with deposit; from next month ₹500)
     dueDay: 15,
     category: 'Appliance Rental',
     reminderDaysBefore: 3,
-    splitMemberIds: ['mem_prajwal', 'mem_rohan', 'mem_amit', 'mem_vikram'],
+    firstMonthAmount: 1500, // 1st month ₹1500 (deposit included)
+    regularMonthlyAmount: 500, // From next month ₹500 regular rent
+    splitMemberIds: ['mem_prajwal', 'mem_rohan', 'mem_amit', 'mem_vikram', 'mem_karthik', 'mem_sneha'],
     payerId: 'mem_prajwal',
-    notes: 'RentoMojo monthly cycle on 15th',
-  },
-  {
-    id: 'rec_wifi',
-    title: 'Airtel Fiber Broadband (300 Mbps)',
-    amount: 1199,
-    dueDay: 22,
-    category: 'Utilities',
-    reminderDaysBefore: 3,
-    splitMemberIds: [
-      'mem_prajwal',
-      'mem_rohan',
-      'mem_amit',
-      'mem_vikram',
-      'mem_karthik',
-      'mem_sneha',
-    ],
-    payerId: 'mem_prajwal',
-    notes: 'Auto-debit bill on 22nd',
+    notes: 'First month ₹1500 (Deposit included). From next month onwards ₹500/month.',
   },
 ];
 
@@ -584,21 +572,14 @@ export const DEFAULT_CONTACTS: FlatContact[] = [
 export const DEFAULT_NOTICES: FlatNotice[] = [
   {
     id: 'notice_1',
-    title: 'Flat High-Speed Wi-Fi Details',
-    content: 'SSID: Flat304_HighSpeed_5G | Password: FlatMates@2026! | 300 Mbps Airtel Fiber router in living room cabinet.',
-    isImportant: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'notice_2',
     title: 'Doorstep Waste Collection Timing',
     content: 'BBMP collection staff arrives daily at 8:45 AM. Segregate wet and dry waste into separate bins outside door.',
     isImportant: false,
     createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
   },
   {
-    id: 'notice_3',
-    title: 'Quiet Hours & Late Night Visitor Courtesy',
+    id: 'notice_2',
+    title: 'Quiet Hours & Late Night Courtesy',
     content: 'Please keep music, gaming, and television volume low after 10:30 PM on weekdays in respect of roommates.',
     isImportant: false,
     createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
@@ -619,6 +600,7 @@ export function getInitialAppState(): AppState {
     chores: DEFAULT_CHORES,
     contacts: DEFAULT_CONTACTS,
     notices: DEFAULT_NOTICES,
+    holderPasscode: '1234',
     lastUpdated: new Date().toISOString(),
   };
 }
@@ -640,6 +622,7 @@ export function loadAppState(): AppState {
     return {
       ...initial,
       ...parsed,
+      holderPasscode: parsed.holderPasscode || '1234',
       personalExpenses: parsed.personalExpenses || initial.personalExpenses,
       pantryItems: parsed.pantryItems || initial.pantryItems,
       chores: parsed.chores || initial.chores,

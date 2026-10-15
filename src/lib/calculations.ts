@@ -181,3 +181,52 @@ export function formatINR(amount: number): string {
     maximumFractionDigits: 2,
   }).format(amount);
 }
+
+export interface DirectDebtSummary {
+  fromMemberId: string;
+  fromMemberName: string;
+  toMemberId: string;
+  toMemberName: string;
+  amount: number;
+  itemCount: number;
+}
+
+/**
+ * Summarizes exact peer debts into crystal clear, human-understandable records:
+ * "Rohan has to give ₹X to Prajwal"
+ */
+export function getDirectDebtSummaries(members: Member[], shares: ExpenseShare[]): DirectDebtSummary[] {
+  const arrears = shares.filter((s) => s.status === 'ARREAR' || s.status === 'CLAIMED_PAID');
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+
+  const pairMap = new Map<string, { amount: number; count: number }>();
+
+  arrears.forEach((s) => {
+    if (s.debtorId === s.creditorId) return;
+    const pairKey = `${s.debtorId}__TO__${s.creditorId}`;
+    const current = pairMap.get(pairKey) || { amount: 0, count: 0 };
+    pairMap.set(pairKey, {
+      amount: current.amount + (s.amount - (s.partialPaidAmount || 0)),
+      count: current.count + 1,
+    });
+  });
+
+  const results: DirectDebtSummary[] = [];
+  pairMap.forEach((data, key) => {
+    const [debtorId, creditorId] = key.split('__TO__');
+    const fromMember = memberMap.get(debtorId);
+    const toMember = memberMap.get(creditorId);
+    if (fromMember && toMember && data.amount > 0) {
+      results.push({
+        fromMemberId: debtorId,
+        fromMemberName: fromMember.name,
+        toMemberId: creditorId,
+        toMemberName: toMember.name,
+        amount: Math.round(data.amount * 100) / 100,
+        itemCount: data.count,
+      });
+    }
+  });
+
+  return results.sort((a, b) => b.amount - a.amount);
+}

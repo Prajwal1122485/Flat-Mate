@@ -200,7 +200,7 @@ export default function PayToMatesModal({
                   </div>
                   {totalPendingOwed > 0 && (
                     <span className="text-xs font-semibold text-red-600 dark:text-red-400">
-                      You owe him: {formatINR(totalPendingOwed)}
+                      Pending to give: {formatINR(totalPendingOwed)}
                     </span>
                   )}
                 </div>
@@ -217,7 +217,7 @@ export default function PayToMatesModal({
                   {pendingOwedShares.length > 0 && (
                     <div className="w-full sm:w-60 space-y-2">
                       <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        Quick Pay Outstanding Debts:
+                        Pending Arrears to Clear:
                       </div>
                       <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                         {pendingOwedShares.map((s) => (

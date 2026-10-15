@@ -339,13 +339,13 @@ export default function MemberCheckModal({
                           Paid ✓
                         </span>
 
-                        {/* Holder Revert Button */}
+                        {/* Holder Undo Button */}
                         <button
                           onClick={() => onRevertShare(share.id)}
                           className="text-xs text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 underline transition-colors"
-                          title="Revert back to Arrear if accidental"
+                          title="Mark back as Pending if accidental"
                         >
-                          Revert
+                          Mark as Pending (Undo)
                         </button>
                       </div>
                     </div>

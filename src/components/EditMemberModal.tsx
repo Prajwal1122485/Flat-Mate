@@ -37,7 +37,7 @@ export default function EditMemberModal({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [upiId, setUpiId] = useState('');
-  const [budget, setBudget] = useState('8000');
+  const [budget, setBudget] = useState('');
   const [avatarBg, setAvatarBg] = useState('bg-indigo-600');
 
   useEffect(() => {
@@ -45,13 +45,13 @@ export default function EditMemberModal({
       setName(member.name);
       setPhone(member.phone || '');
       setUpiId(member.upiId || '');
-      setBudget(member.monthlyBudget?.toString() || '8000');
+      setBudget(member.monthlyBudget ? member.monthlyBudget.toString() : '');
       setAvatarBg(member.avatarBg || 'bg-indigo-600');
     } else {
       setName('');
       setPhone('');
       setUpiId('');
-      setBudget('8000');
+      setBudget('');
       setAvatarBg(AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]);
     }
   }, [member, isOpen]);
@@ -62,6 +62,9 @@ export default function EditMemberModal({
     e.preventDefault();
     if (!name.trim()) return;
 
+    const parsedBudget = budget.trim() ? parseFloat(budget) : undefined;
+    const finalBudget = parsedBudget && !isNaN(parsedBudget) && parsedBudget > 0 ? parsedBudget : undefined;
+
     if (isNew && onAddNewMember) {
       const newM: Member = {
         id: `mem_${Date.now()}`,
@@ -70,7 +73,7 @@ export default function EditMemberModal({
         upiId: upiId.trim() || `${name.toLowerCase().replace(/\s+/g, '')}@upi`,
         isHolder: false,
         avatarBg,
-        monthlyBudget: parseFloat(budget) || 8000,
+        monthlyBudget: finalBudget,
       };
       onAddNewMember(newM);
     } else if (member) {
@@ -80,7 +83,7 @@ export default function EditMemberModal({
         phone: phone.trim(),
         upiId: upiId.trim(),
         avatarBg,
-        monthlyBudget: parseFloat(budget) || 8000,
+        monthlyBudget: finalBudget,
       });
     }
 
@@ -164,17 +167,57 @@ export default function EditMemberModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
-              Monthly Budget (₹ INR)
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                Monthly Budget (₹ INR) <span className="text-slate-400 font-normal lowercase">(optional / can be Nil)</span>
+              </label>
+              {budget && (
+                <button
+                  type="button"
+                  onClick={() => setBudget('')}
+                  className="text-[11px] text-rose-500 hover:underline font-semibold"
+                >
+                  Clear to Nil
+                </button>
+              )}
+            </div>
             <input
               type="number"
               step="500"
               value={budget}
               onChange={(e) => setBudget(e.target.value)}
-              placeholder="e.g. 8000"
+              placeholder="e.g. Leave empty for Nil, or type 1000, 2000..."
               className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
+            {/* Quick preset buttons */}
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <span className="text-[10px] text-slate-400 font-medium">Quick set:</span>
+              <button
+                type="button"
+                onClick={() => setBudget('')}
+                className={`px-2 py-0.5 text-[11px] rounded-lg border transition-all ${
+                  !budget
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300 font-bold'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                Nil (0)
+              </button>
+              {['1000', '2000', '5000', '8000', '10000'].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setBudget(preset)}
+                  className={`px-2 py-0.5 text-[11px] rounded-lg border transition-all ${
+                    budget === preset
+                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300 font-bold'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  ₹{parseInt(preset).toLocaleString('en-IN')}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Avatar Color Picker */}

@@ -19,6 +19,9 @@ import {
   TrendingUp,
   Receipt,
   UserPlus,
+  Lock,
+  KeyRound,
+  Shield,
 } from 'lucide-react';
 import {
   Member,
@@ -32,6 +35,7 @@ import {
   formatINR,
   calculateNetBalances,
   getRecurringBillStatus,
+  getDirectDebtSummaries,
 } from '@/lib/calculations';
 import { generateHolderMasterAuditPDF } from '@/lib/pdfGenerator';
 import confetti from 'canvas-confetti';
@@ -44,6 +48,8 @@ interface HolderPortalProps {
   recurringBills: RecurringBill[];
   purchaseRequests: PurchaseRequest[];
   paymentClaims: DirectPaymentClaim[];
+  holderPasscode?: string;
+  onUpdateHolderPasscode?: (newPasscode: string) => void;
   onOpenRecordExpense: () => void;
   onOpenRentManager: () => void;
   onOpenCheckModal: (member: Member) => void;
@@ -53,7 +59,7 @@ interface HolderPortalProps {
   onRevertShare: (shareId: string) => void;
   onConfirmPaymentClaim: (claimId: string) => void;
   onRejectPaymentClaim: (claimId: string) => void;
-  onConvertRequestToExpense: (request: PurchaseRequest) => void;
+  onConvertRequestToExpense: (request: PurchaseRequest, targetMemberIds?: string[]) => void;
   onOpenEditExpense?: (expense: Expense) => void;
   onDeleteExpense?: (expenseId: string) => void;
   onDeleteShare?: (shareId: string) => void;
@@ -68,6 +74,8 @@ export default function HolderPortal({
   recurringBills,
   purchaseRequests,
   paymentClaims,
+  holderPasscode = '1234',
+  onUpdateHolderPasscode,
   onOpenRecordExpense,
   onOpenRentManager,
   onOpenCheckModal,
@@ -83,11 +91,19 @@ export default function HolderPortal({
   onDeleteShare,
   onDeletePurchaseRequest,
 }: HolderPortalProps) {
-  const [activeTab, setActiveTab] = useState<'mates' | 'expenses' | 'arrears' | 'completed' | 'requests' | 'matrix'>('mates');
+  const [activeTab, setActiveTab] = useState<'mates' | 'expenses' | 'arrears' | 'completed' | 'requests' | 'matrix' | 'security'>('mates');
   const [arrearFilter, setArrearFilter] = useState<'all' | 'owedToMe' | 'owedByMe' | string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseCatFilter, setExpenseCatFilter] = useState('all');
+
+  // Subset split modal state for purchase requests
+  const [subsetRequest, setSubsetRequest] = useState<PurchaseRequest | null>(null);
+  const [subsetSelectedMemberIds, setSubsetSelectedMemberIds] = useState<string[]>([]);
+
+  // Passcode change state
+  const [newPasscode, setNewPasscode] = useState('');
+  const [passcodeSuccess, setPasscodeSuccess] = useState(false);
 
   // Metrics
   const totalSpentViaHolder = useMemo(() => {
@@ -121,6 +137,11 @@ export default function HolderPortal({
   // Net Balance matrix
   const netBalances = useMemo(() => {
     return calculateNetBalances(members, shares);
+  }, [members, shares]);
+
+  // Crystal clear direct debt summaries ("Rohan has to give ₹X to Prajwal")
+  const directDebts = useMemo(() => {
+    return getDirectDebtSummaries(members, shares);
   }, [members, shares]);
 
   // Active Arrears
@@ -398,7 +419,7 @@ export default function HolderPortal({
             )}
           </button>
 
-          {/* NET MATRIX TAB */}
+          {/* WHO PAYS WHOM (SUMMARY) */}
           <button
             type="button"
             onClick={() => setActiveTab('matrix')}
@@ -409,7 +430,21 @@ export default function HolderPortal({
             }`}
           >
             <TrendingUp className="w-4 h-4" />
-            <span>Net Balance Matrix</span>
+            <span>Who Pays Whom (Summary)</span>
+          </button>
+
+          {/* SECURITY & PASSCODE */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('security')}
+            className={`inline-flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'security'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <Lock className="w-4 h-4" />
+            <span>Security &amp; Passcode</span>
           </button>
         </div>
       </div>
@@ -716,9 +751,9 @@ export default function HolderPortal({
                 onChange={(e) => setArrearFilter(e.target.value)}
                 className="px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
               >
-                <option value="all">Filter: All Active Debts</option>
-                <option value="owedToMe">Owed to Me (Holder)</option>
-                <option value="owedByMe">Owed by Me</option>
+                <option value="all">Filter: All Pending Payments</option>
+                <option value="owedToMe">To Receive (As Holder)</option>
+                <option value="owedByMe">I Have to Give</option>
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
                     By Member: {m.name}
@@ -748,7 +783,7 @@ export default function HolderPortal({
                 Zero Unsettled Arrears!
               </h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                No pending debts matching your filter. Everyone is settled up.
+                No pending payments matching your filter. Everyone is settled up.
               </p>
             </div>
           ) : (
@@ -758,7 +793,7 @@ export default function HolderPortal({
                   <thead className="bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-bold uppercase tracking-wider">
                     <tr>
                       <th className="py-3 px-4">Expense Title</th>
-                      <th className="py-3 px-4">Debtor Owes Payer</th>
+                      <th className="py-3 px-4">Who Has to Give &rarr; Who Receives</th>
                       <th className="py-3 px-4">Category</th>
                       <th className="py-3 px-4">Created Date</th>
                       <th className="py-3 px-4 text-right">Share Amount</th>
@@ -782,7 +817,7 @@ export default function HolderPortal({
                             <span className="font-bold text-red-600 dark:text-red-400">
                               {debtor?.name}
                             </span>{' '}
-                            <span className="text-slate-400">owes</span>{' '}
+                            <span className="text-slate-400">has to give to</span>{' '}
                             <span className="font-bold text-slate-800 dark:text-slate-200">
                               {creditor.name}
                             </span>
@@ -852,7 +887,7 @@ export default function HolderPortal({
                       <th className="py-3 px-4">Category</th>
                       <th className="py-3 px-4">Settled Date</th>
                       <th className="py-3 px-4 text-right">Settled Amount</th>
-                      <th className="py-3 px-4 text-center">Revert Action</th>
+                      <th className="py-3 px-4 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -897,10 +932,10 @@ export default function HolderPortal({
                               type="button"
                               onClick={() => onRevertShare(share.id)}
                               className="px-2.5 py-1 text-xs text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/60 rounded-lg border border-amber-200 dark:border-amber-800 transition-colors inline-flex items-center gap-1"
-                              title="Revert back to Arrears"
+                              title="Mark back as Pending"
                             >
                               <RotateCcw className="w-3 h-3" />
-                              <span>Revert</span>
+                              <span>Mark as Pending (Undo)</span>
                             </button>
                           </td>
                         </tr>
@@ -1030,14 +1065,25 @@ export default function HolderPortal({
                       </div>
 
                       {req.status !== 'PURCHASED' && (
-                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex-wrap">
                           <button
                             type="button"
                             onClick={() => onConvertRequestToExpense(req)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-transform active:scale-95"
                           >
                             <PlusCircle className="w-3.5 h-3.5" />
-                            <span>Buy &amp; Split for Flat</span>
+                            <span>Buy &amp; Split to Everyone</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSubsetRequest(req);
+                              setSubsetSelectedMemberIds(members.map((m) => m.id));
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors"
+                          >
+                            <Users className="w-3.5 h-3.5" />
+                            <span>Buy &amp; Split to Selected Persons Only</span>
                           </button>
                         </div>
                       )}
@@ -1050,82 +1096,290 @@ export default function HolderPortal({
         </div>
       )}
 
-      {/* ================= TAB 5: NET BALANCE MATRIX ================= */}
+      {/* ================= TAB 5: WHO PAYS WHOM (SUMMARY) ================= */}
       {activeTab === 'matrix' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                Net Balance Matrix
+                Who Pays Whom (Direct Balance Summary)
               </h2>
               <p className="text-xs text-slate-500">
-                Clear summary of who owes whom in the simplest way.
+                Crystal clear peer settlement records showing exactly who has to give money to whom.
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {netBalances.map((item) => {
-              const isPositive = item.netBalance > 0;
-              const isNegative = item.netBalance < 0;
-
-              return (
-                <div
-                  key={item.memberId}
-                  className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 dark:text-white text-base">
-                      {item.memberName}
-                    </span>
-                    <span
-                      className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
-                        isPositive
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                          : isNegative
-                          ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
-                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                      }`}
-                    >
-                      {isPositive
-                        ? 'Should Receive'
-                        : isNegative
-                        ? 'Owes Group'
-                        : 'Settled'}
-                    </span>
+          {/* 1. Direct Debt Statements */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Direct Peer Obligations ({directDebts.length} active balances)
+            </h3>
+            {directDebts.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-1.5" />
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Everyone is completely settled up!
+                </p>
+                <p className="text-xs text-slate-500">
+                  No roommate has any pending payments to make.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {directDebts.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-2xl border border-red-200 dark:border-red-900/40 bg-red-50/20 dark:bg-red-950/10 flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="text-xl">👉</div>
+                      <div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white">
+                          <span className="text-red-600 dark:text-red-400 font-extrabold">{item.fromMemberName}</span>{' '}
+                          has to give to{' '}
+                          <span className="text-slate-900 dark:text-white font-extrabold">{item.toMemberName}</span>
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Across {item.itemCount} pending split item{item.itemCount > 1 ? 's' : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-lg font-black text-red-600 dark:text-red-400">
+                      {formatINR(item.amount)}
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-                  <div className="space-y-1.5 text-xs text-slate-500 border-t border-slate-100 dark:border-slate-800 pt-2">
-                    <div className="flex justify-between">
-                      <span>Total owed to him:</span>
-                      <span className="font-semibold text-emerald-600">
-                        {formatINR(item.totalOwedToThem)}
+          {/* 2. Roommate Totals */}
+          <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Roommate Balance Ledger
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {netBalances.map((item) => {
+                const isPositive = item.netBalance > 0;
+                const isNegative = item.netBalance < 0;
+
+                return (
+                  <div
+                    key={item.memberId}
+                    className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900 dark:text-white text-base">
+                        {item.memberName}
                       </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Total he owes:</span>
-                      <span className="font-semibold text-red-600">
-                        {formatINR(item.totalTheyOwe)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-t border-slate-100 dark:border-slate-800 pt-1 font-bold text-slate-900 dark:text-white">
-                      <span>Net Balance:</span>
                       <span
-                        className={
+                        className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
                           isPositive
-                            ? 'text-emerald-600'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                             : isNegative
-                            ? 'text-red-600'
-                            : 'text-slate-600'
-                        }
+                            ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                        }`}
                       >
-                        {formatINR(Math.abs(item.netBalance))}
+                        {isPositive
+                          ? 'To Receive'
+                          : isNegative
+                          ? 'Has to Give'
+                          : 'Settled'}
                       </span>
                     </div>
+
+                    <div className="space-y-1.5 text-xs text-slate-500 border-t border-slate-100 dark:border-slate-800 pt-2">
+                      <div className="flex justify-between">
+                        <span>Total to Receive:</span>
+                        <span className="font-semibold text-emerald-600">
+                          {formatINR(item.totalOwedToThem)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Total to Give:</span>
+                        <span className="font-semibold text-red-600">
+                          {formatINR(item.totalTheyOwe)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-100 dark:border-slate-800 pt-1 font-bold text-slate-900 dark:text-white">
+                        <span>Net Position:</span>
+                        <span
+                          className={
+                            isPositive
+                              ? 'text-emerald-600'
+                              : isNegative
+                              ? 'text-red-600'
+                              : 'text-slate-600'
+                          }
+                        >
+                          {isPositive ? `+${formatINR(item.netBalance)}` : formatINR(item.netBalance)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 6: SECURITY & PASSCODE ================= */}
+      {activeTab === 'security' && (
+        <div className="space-y-6 max-w-xl">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Shield className="w-5 h-5 text-indigo-500" />
+              <span>Holder Master Security &amp; Passcode</span>
+            </h2>
+            <p className="text-xs text-slate-500">
+              Configure master access protection. The Holder portal automatically locks 10 seconds after leaving.
+            </p>
+          </div>
+
+          <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Change Master Holder Password
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Enter a new secret password for the Holder portal.
+                </p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newPasscode.trim()) return;
+                if (onUpdateHolderPasscode) {
+                  onUpdateHolderPasscode(newPasscode.trim());
+                  setPasscodeSuccess(true);
+                  setNewPasscode('');
+                  setTimeout(() => setPasscodeSuccess(false), 3000);
+                }
+              }}
+              className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800"
+            >
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
+                  New Password / PIN
+                </label>
+                <input
+                  type="password"
+                  value={newPasscode}
+                  onChange={(e) => setNewPasscode(e.target.value)}
+                  placeholder="Enter new master password"
+                  className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {passcodeSuccess && (
+                <p className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Password updated successfully!
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={!newPasscode.trim()}
+                className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm transition-all"
+              >
+                Update Password
+              </button>
+            </form>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 space-y-1.5">
+            <div className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Lock className="w-4 h-4 text-indigo-500" />
+              <span>10-Second Auto-Relock Security Policy</span>
+            </div>
+            <p>
+              When you exit the Holder portal or switch to flatmate view, access remains unlocked for exactly 10 seconds.
+              After 10 seconds of leaving the portal, you will be required to re-enter your password to ensure flatmate privacy and security.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Subset Split Picker Modal for Purchase Requests */}
+      {subsetRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Split &ldquo;{subsetRequest.title}&rdquo; Among Selected Roommates
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Total: <strong>{formatINR(subsetRequest.estimatedCost)}</strong> &bull; Requested by{' '}
+                {members.find((m) => m.id === subsetRequest.requestedById)?.name}
+              </p>
+            </div>
+
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Select who shares this item:
+              </div>
+              {members.map((m) => {
+                const isSelected = subsetSelectedMemberIds.includes(m.id);
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() => {
+                      setSubsetSelectedMemberIds((prev) =>
+                        prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
+                      );
+                    }}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer select-none transition-all ${
+                      isSelected
+                        ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-950 dark:text-white'
+                        : 'border-slate-200 dark:border-slate-800 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded flex items-center justify-center ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`}>
+                        {isSelected ? '✓' : '○'}
+                      </div>
+                      <span className="text-xs font-semibold">{m.name}</span>
+                    </div>
+                    {isSelected && subsetSelectedMemberIds.length > 0 && (
+                      <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                        ₹{(subsetRequest.estimatedCost / subsetSelectedMemberIds.length).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSubsetRequest(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={subsetSelectedMemberIds.length === 0}
+                onClick={() => {
+                  onConvertRequestToExpense(subsetRequest, subsetSelectedMemberIds);
+                  setSubsetRequest(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm"
+              >
+                Confirm Split ({subsetSelectedMemberIds.length} Mates)
+              </button>
+            </div>
           </div>
         </div>
       )}

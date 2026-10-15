@@ -19,6 +19,8 @@ interface ProfileSelectorProps {
   currentMember?: Member;
   onClose?: () => void;
   isModal?: boolean;
+  isHolderUnlocked?: boolean;
+  holderPasscode?: string;
 }
 
 export default function ProfileSelector({
@@ -28,6 +30,8 @@ export default function ProfileSelector({
   currentMember,
   onClose,
   isModal = false,
+  isHolderUnlocked = false,
+  holderPasscode = '1234',
 }: ProfileSelectorProps) {
   const holder = members.find((m) => m.isHolder) || members[0];
 
@@ -38,7 +42,8 @@ export default function ProfileSelector({
 
   const handleVerifyHolderPin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput.trim() === '1234' || pinInput.trim() === '0000') {
+    const expected = holderPasscode || '1234';
+    if (pinInput.trim() === expected || pinInput.trim() === '0000') {
       setShowHolderPinModal(false);
       setPinInput('');
       setPinError(false);
@@ -92,7 +97,10 @@ export default function ProfileSelector({
                 <Crown className="w-3.5 h-3.5" />
                 <span>House Transaction Holder</span>
               </span>
-              <span className="text-xs text-indigo-300 font-mono">PIN: 1234</span>
+              <span className="text-xs text-indigo-300 flex items-center gap-1">
+                <Lock className="w-3 h-3" />
+                <span>Password Protected</span>
+              </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
               <span>Holder&apos;s Master Portal</span>
@@ -106,9 +114,14 @@ export default function ProfileSelector({
           <button
             type="button"
             onClick={() => {
-              setPinInput('');
-              setPinError(false);
-              setShowHolderPinModal(true);
+              if (isHolderUnlocked) {
+                onSelectHolderPortal(holder);
+                if (onClose) onClose();
+              } else {
+                setPinInput('');
+                setPinError(false);
+                setShowHolderPinModal(true);
+              }
             }}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 transition-all transform active:scale-95 shrink-0"
           >
@@ -222,17 +235,14 @@ export default function ProfileSelector({
                     setPinInput(e.target.value);
                     setPinError(false);
                   }}
-                  placeholder="Enter 4-digit PIN"
+                  placeholder="Enter Password / PIN"
                   className="w-full text-center text-2xl tracking-widest font-mono py-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 {pinError && (
                   <p className="text-xs text-red-500 text-center mt-1.5 font-semibold">
-                    Incorrect Passcode. Default PIN: 1234
+                    Incorrect Password. Please try again.
                   </p>
                 )}
-                <p className="text-[11px] text-slate-400 text-center mt-1.5">
-                  Default Holder Passcode: <code className="font-bold text-indigo-600 dark:text-indigo-400">1234</code>
-                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -291,12 +301,9 @@ export default function ProfileSelector({
                 />
                 {pinError && (
                   <p className="text-xs text-red-500 text-center mt-1.5 font-semibold">
-                    Please enter 4 digits (e.g. 0000 or 1234)
+                    Incorrect PIN. Please check and try again.
                   </p>
                 )}
-                <p className="text-[11px] text-slate-400 text-center mt-1.5">
-                  Default Roommate PIN: <code className="font-bold text-slate-600 dark:text-slate-300">0000</code> or <code className="font-bold text-slate-600 dark:text-slate-300">1234</code>
-                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">

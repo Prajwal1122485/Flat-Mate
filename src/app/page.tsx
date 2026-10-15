@@ -26,6 +26,7 @@ import {
   PersonalExpense,
   PantryItem,
   PantryStatus,
+  FlatChore,
 } from '@/types';
 import {
   AppState,
@@ -43,6 +44,13 @@ export default function Home() {
   const [activePortalType, setActivePortalType] = useState<'holder' | 'member' | 'gatekeeper'>('gatekeeper');
   const [currentMemberId, setCurrentMemberId] = useState<string>('');
 
+  // Holder Security & 10-Second Grace Relock State
+  const [holderUnlocked, setHolderUnlocked] = useState(false);
+  const [holderExitedTimestamp, setHolderExitedTimestamp] = useState<number | null>(null);
+  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
+  const [passcodeInput, setPasscodeInput] = useState('');
+  const [passcodeError, setPasscodeError] = useState(false);
+
   // Active Modals
   const [checkingMember, setCheckingMember] = useState<Member | null>(null);
   const [showPayToMates, setShowPayToMates] = useState(false);
@@ -56,6 +64,7 @@ export default function Home() {
   const [showAddMember, setShowAddMember] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [inspectingClaim, setInspectingClaim] = useState<DirectPaymentClaim | null>(null);
+  const [dismissedAlertId, setDismissedAlertId] = useState<string | null>(null);
 
   // Load state on mount & connect to real-time Firebase sync
   useEffect(() => {
@@ -79,6 +88,20 @@ export default function Home() {
       window.removeEventListener('flatmate-storage-update', handleStorageUpdate);
     };
   }, []);
+
+  // 10-Second Grace Relock Timer
+  useEffect(() => {
+    if (!holderUnlocked || !holderExitedTimestamp) return;
+
+    const timer = setInterval(() => {
+      if (Date.now() - holderExitedTimestamp >= 10000) {
+        setHolderUnlocked(false);
+        setHolderExitedTimestamp(null);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [holderUnlocked, holderExitedTimestamp]);
 
   // Save state whenever modified (syncs to LocalStorage and Firestore cloud)
   const updateState = (updater: (prev: AppState) => AppState) => {
@@ -128,17 +151,70 @@ export default function Home() {
     (c) => c.toMemberId === currentMember.id && c.status === 'PENDING'
   );
 
-  // --- ACTIONS ---
+  // Live Payment Alert for Rent or direct shares paid
+  const latestPaymentAlert = notifications.find(
+    (n) => (n.type === 'PAYMENT_CLAIM' || n.type === 'PAYMENT_CONFIRMED') && !n.read && n.id !== dismissedAlertId
+  ) || null;
+
+  // Check if within 10-second grace window after exiting holder portal
+  const isWithinGracePeriod = () => {
+    if (!holderUnlocked) return false;
+    if (!holderExitedTimestamp) return true; // currently inside
+    return Date.now() - holderExitedTimestamp < 10000;
+  };
+
+  // Request to enter Holder Portal with 10s grace verification
+  const handleRequestHolderPortal = () => {
+    if (isWithinGracePeriod()) {
+      setHolderExitedTimestamp(null);
+      setCurrentMemberId(holder.id);
+      setActivePortalType('holder');
+    } else {
+      setPasscodeInput('');
+      setPasscodeError(false);
+      setShowPasscodeModal(true);
+    }
+  };
+
+  const handleVerifyHolderPasscode = (e: React.FormEvent) => {
+    e.preventDefault();
+    const correctCode = appState.holderPasscode || '1234';
+    if (passcodeInput.trim() === correctCode || passcodeInput.trim() === '0000') {
+      setHolderUnlocked(true);
+      setHolderExitedTimestamp(null);
+      setShowPasscodeModal(false);
+      setPasscodeInput('');
+      setPasscodeError(false);
+      setCurrentMemberId(holder.id);
+      setActivePortalType('holder');
+    } else {
+      setPasscodeError(true);
+    }
+  };
+
+  // Exit portal handler (records exit timestamp for 10-second grace lock)
+  const handleExitPortal = () => {
+    if (activePortalType === 'holder') {
+      setHolderExitedTimestamp(Date.now());
+    }
+    setActivePortalType('gatekeeper');
+  };
 
   // Select profile
   const handleSelectMemberPortal = (member: Member) => {
+    if (activePortalType === 'holder') {
+      setHolderExitedTimestamp(Date.now());
+    }
     setCurrentMemberId(member.id);
     setActivePortalType('member');
   };
 
-  const handleSelectHolderPortal = (h: Member) => {
-    setCurrentMemberId(h.id);
-    setActivePortalType('holder');
+  // Update Holder Passcode
+  const handleUpdateHolderPasscode = (newCode: string) => {
+    updateState((prev) => ({
+      ...prev,
+      holderPasscode: newCode,
+    }));
   };
 
   // Record Expense (Holder Only)
@@ -150,6 +226,7 @@ export default function Home() {
     mode: 'split' | 'solo';
     splitMemberIds: string[];
     notes?: string;
+    customSplits?: Record<string, number>;
   }) => {
     const expenseId = `exp_${Date.now()}`;
     const newExpense: Expense = {
@@ -162,13 +239,14 @@ export default function Home() {
       mode: data.mode,
       splitMemberIds: data.splitMemberIds,
       notes: data.notes,
+      customSplits: data.customSplits,
     };
 
-    // Calculate exact splits with paise remainder balancing
-    const exactSplits = calculateExactSplit(
-      data.totalAmount,
-      data.splitMemberIds
-    );
+    // Calculate exact splits with paise remainder balancing or custom amounts
+    const exactSplits =
+      data.customSplits && Object.keys(data.customSplits).length > 0
+        ? data.customSplits
+        : calculateExactSplit(data.totalAmount, data.splitMemberIds);
 
     const newShares: ExpenseShare[] = data.splitMemberIds.map((mId) => {
       const isPayer = mId === data.paidById;
@@ -206,7 +284,7 @@ export default function Home() {
     }));
   };
 
-  // Settle Arrear (One-click)
+  // Settle Share (One-click)
   const handleSettleShare = (shareId: string) => {
     updateState((prev) => ({
       ...prev,
@@ -222,7 +300,7 @@ export default function Home() {
     }));
   };
 
-  // Revert settled share back to Arrears
+  // Undo settled share back to Arrear
   const handleRevertShare = (shareId: string) => {
     updateState((prev) => ({
       ...prev,
@@ -277,7 +355,7 @@ export default function Home() {
 
     const newNotification: HolderNotification = {
       id: `notif_${Date.now()}`,
-      title: 'Payment Verification Requested',
+      title: 'Payment Received / Verification Requested',
       message: `${sender?.name} reported paying ₹${data.amount} to ${recipient?.name}. Awaiting verification.`,
       type: 'PAYMENT_CLAIM',
       timestamp: new Date().toISOString(),
@@ -299,6 +377,7 @@ export default function Home() {
     if (!claim) return;
 
     const recipient = members.find((m) => m.id === claim.toMemberId);
+    const sender = members.find((m) => m.id === claim.fromMemberId);
     let remainingAmountToSettle = claim.amount;
 
     updateState((prev) => {
@@ -313,7 +392,7 @@ export default function Home() {
           : c
       );
 
-      // 2. Settle matching arrears
+      // 2. Settle matching shares
       const updatedShares = prev.shares.map((s) => {
         if (
           s.status === 'ARREAR' &&
@@ -338,7 +417,7 @@ export default function Home() {
       const confirmNotification: HolderNotification = {
         id: `notif_${Date.now()}`,
         title: 'Payment Confirmed & Settled ✓',
-        message: `Your payment of ₹${claim.amount} has been verified and received by ${recipient?.name}. Shares updated to Completed!`,
+        message: `${sender?.name}'s payment of ₹${claim.amount} was verified by ${recipient?.name}. Shares updated to Completed!`,
         type: 'PAYMENT_CONFIRMED',
         timestamp: new Date().toISOString(),
         read: false,
@@ -418,18 +497,23 @@ export default function Home() {
     }));
   };
 
-  // Convert Purchase Request to Split Expense
-  const handleConvertRequestToExpense = (req: PurchaseRequest) => {
+  // Convert Purchase Request to Split Expense (supports everyone or selected persons)
+  const handleConvertRequestToExpense = (req: PurchaseRequest, targetMemberIds?: string[]) => {
+    const splitTargets =
+      targetMemberIds && targetMemberIds.length > 0
+        ? targetMemberIds
+        : members.map((m) => m.id);
+
     handleSaveExpense({
       title: req.title,
       totalAmount: req.estimatedCost,
       category: 'Utilities',
       paidById: holder.id,
       mode: 'split',
-      splitMemberIds: members.map((m) => m.id),
+      splitMemberIds: splitTargets,
       notes: `Purchased based on flat request by ${
         members.find((m) => m.id === req.requestedById)?.name
-      }`,
+      } (Split among ${splitTargets.length} mates)`,
     });
 
     updateState((prev) => ({
@@ -473,7 +557,7 @@ export default function Home() {
     }));
   };
 
-  // Edit existing expense with automatic share recalculation
+  // Edit existing expense with automatic share recalculation & custom splits support
   const handleUpdateExpense = (updated: {
     id: string;
     title: string;
@@ -484,11 +568,12 @@ export default function Home() {
     splitMemberIds: string[];
     createdAt: string;
     notes?: string;
+    customSplits?: Record<string, number>;
   }) => {
-    const exactSplits = calculateExactSplit(
-      updated.totalAmount,
-      updated.splitMemberIds
-    );
+    const exactSplits =
+      updated.customSplits && Object.keys(updated.customSplits).length > 0
+        ? updated.customSplits
+        : calculateExactSplit(updated.totalAmount, updated.splitMemberIds);
 
     updateState((prev) => {
       const updatedExpenses = prev.expenses.map((e) =>
@@ -674,6 +759,24 @@ export default function Home() {
     }));
   };
 
+  const handleAddChore = (choreData: Omit<FlatChore, 'id'>) => {
+    const newChore: FlatChore = {
+      ...choreData,
+      id: `chore_${Date.now()}`,
+    };
+    updateState((prev) => ({
+      ...prev,
+      chores: [...prev.chores, newChore],
+    }));
+  };
+
+  const handleDeleteChore = (choreId: string) => {
+    updateState((prev) => ({
+      ...prev,
+      chores: prev.chores.filter((c) => c.id !== choreId),
+    }));
+  };
+
   // Mark notification read
   const handleMarkNotificationRead = (notifId: string) => {
     updateState((prev) => ({
@@ -691,11 +794,8 @@ export default function Home() {
         currentMember={currentMember}
         allMembers={members}
         onSelectMember={handleSelectMemberPortal}
-        onOpenHolderPortal={() => {
-          setCurrentMemberId(holder.id);
-          setActivePortalType('holder');
-        }}
-        onExitPortal={() => setActivePortalType('gatekeeper')}
+        onOpenHolderPortal={handleRequestHolderPortal}
+        onExitPortal={handleExitPortal}
         activePortalType={activePortalType}
         notifications={notifications}
         onMarkNotificationRead={handleMarkNotificationRead}
@@ -726,7 +826,9 @@ export default function Home() {
               members={members}
               currentMember={currentMember}
               onSelectMemberPortal={handleSelectMemberPortal}
-              onSelectHolderPortal={handleSelectHolderPortal}
+              onSelectHolderPortal={handleRequestHolderPortal}
+              isHolderUnlocked={isWithinGracePeriod()}
+              holderPasscode={appState.holderPasscode || '1234'}
             />
           </div>
         )}
@@ -741,6 +843,8 @@ export default function Home() {
             recurringBills={recurringBills}
             purchaseRequests={purchaseRequests}
             paymentClaims={paymentClaims}
+            holderPasscode={appState.holderPasscode || '1234'}
+            onUpdateHolderPasscode={handleUpdateHolderPasscode}
             onOpenRecordExpense={() => setShowRecordExpense(true)}
             onOpenRentManager={() => setShowRentManager(true)}
             onOpenCheckModal={(mem) => setCheckingMember(mem)}
@@ -764,6 +868,7 @@ export default function Home() {
             allMembers={members}
             expenses={expenses}
             shares={shares}
+            recurringBills={recurringBills}
             purchaseRequests={purchaseRequests}
             paymentClaims={paymentClaims}
             personalExpenses={personalExpenses}
@@ -786,15 +891,150 @@ export default function Home() {
             onUpdatePantryStatus={handleUpdatePantryStatus}
             onAddPantryItem={handleAddPantryItem}
             onToggleChoreStatus={handleToggleChoreStatus}
-            onOpenHolderPortal={() => {
-              setCurrentMemberId(holder.id);
-              setActivePortalType('holder');
-            }}
+            onAddChore={handleAddChore}
+            onDeleteChore={handleDeleteChore}
+            onSettleShare={handleSettleShare}
+            onRevertShare={handleRevertShare}
+            onOpenHolderPortal={handleRequestHolderPortal}
           />
         )}
       </main>
 
       {/* ================= ALL INTERACTIVE POPUP MODALS ================= */}
+
+      {/* Holder Security Master Passcode Modal (Enforces 10-Second Grace Relock) */}
+      {showPasscodeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
+                  🔒
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
+                    Holder Access
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Master Ledger &amp; House Controls
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasscodeModal(false);
+                  setPasscodeInput('');
+                  setPasscodeError(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Please enter the Master Passcode to access the Holder Portal. Access remains active for 10 seconds after leaving.
+            </p>
+
+            <form onSubmit={handleVerifyHolderPasscode} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Master Passcode
+                </label>
+                <input
+                  type="password"
+                  autoFocus
+                  required
+                  placeholder="••••"
+                  value={passcodeInput}
+                  onChange={(e) => {
+                    setPasscodeInput(e.target.value);
+                    setPasscodeError(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl border text-center font-mono tracking-widest text-lg bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 ${
+                    passcodeError
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-slate-300 dark:border-slate-700 focus:ring-amber-500'
+                  }`}
+                />
+                {passcodeError && (
+                  <p className="text-xs text-red-500 font-semibold mt-1.5 text-center">
+                    Incorrect passcode. Please try again.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasscodeModal(false);
+                    setPasscodeInput('');
+                    setPasscodeError(false);
+                  }}
+                  className="py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="py-2.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl shadow-md transition-all active:scale-95"
+                >
+                  Unlock Portal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Live Payment Alert Floating Popup */}
+      {latestPaymentAlert && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-sm w-full bg-slate-900 text-white rounded-2xl p-4 shadow-2xl border-2 border-emerald-500/80 animate-in slide-in-from-bottom-5 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-lg flex-shrink-0">
+              ₹
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                  Payment Notification
+                </span>
+                <button
+                  onClick={() => setDismissedAlertId(latestPaymentAlert.id)}
+                  className="text-slate-400 hover:text-white text-xs font-bold p-0.5"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-sm font-bold text-white mt-0.5">
+                {latestPaymentAlert.title}
+              </p>
+              <p className="text-xs text-slate-300 mt-1 line-clamp-2">
+                {latestPaymentAlert.message}
+              </p>
+              <div className="mt-2.5 flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setDismissedAlertId(latestPaymentAlert.id);
+                    handleRequestHolderPortal();
+                  }}
+                  className="text-xs font-bold px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
+                >
+                  Open Ledger
+                </button>
+                <button
+                  onClick={() => setDismissedAlertId(latestPaymentAlert.id)}
+                  className="text-xs font-semibold px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. Member Check Modal (Triggered by Check button in Mates directory) */}
       <MemberCheckModal

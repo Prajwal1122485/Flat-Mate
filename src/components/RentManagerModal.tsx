@@ -51,6 +51,7 @@ export default function RentManagerModal({
   const [editAmount, setEditAmount] = useState<string>('');
   const [editDueDay, setEditDueDay] = useState<string>('');
   const [editTitle, setEditTitle] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
 
   // Add new bill state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -66,6 +67,7 @@ export default function RentManagerModal({
     setEditTitle(bill.title);
     setEditAmount(bill.amount.toString());
     setEditDueDay(bill.dueDay.toString());
+    setEditNotes(bill.notes || '');
   };
 
   const saveEdit = (bill: RecurringBill) => {
@@ -78,6 +80,7 @@ export default function RentManagerModal({
       title: editTitle.trim() || bill.title,
       amount: numAmount,
       dueDay: Math.min(31, Math.max(1, numDay)),
+      notes: editNotes.trim() || undefined,
     });
 
     setEditingBillId(null);
@@ -247,12 +250,24 @@ export default function RentManagerModal({
                             className="w-20 px-2 py-1 text-sm font-bold bg-white dark:bg-slate-900 border border-indigo-500 rounded"
                           />
                         </div>
+                        <div className="w-full">
+                          <label className="text-[10px] font-semibold text-slate-400 uppercase">
+                            Deposit &amp; Rent Notes
+                          </label>
+                          <input
+                            type="text"
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                            placeholder="e.g. Deposit details, next month amount"
+                            className="w-full px-2 py-1 text-xs bg-white dark:bg-slate-900 border border-indigo-500 rounded"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => saveEdit(bill)}
-                          className="mt-3.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1"
+                          className="mt-2 px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1"
                         >
-                          <Check className="w-3.5 h-3.5" /> Save
+                          <Check className="w-3.5 h-3.5" /> Save Changes
                         </button>
                       </div>
                     ) : (
@@ -302,13 +317,30 @@ export default function RentManagerModal({
                         type="button"
                         onClick={() => onGenerateExpenseFromBill(bill)}
                         className="px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 rounded-lg border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5"
-                        title="Generate this month's split expense and create arrears"
+                        title="Generate this month's split expense and create pending shares"
                       >
                         <Split className="w-3.5 h-3.5" />
-                        <span>Post into Arrears</span>
+                        <span>Post into Split</span>
                       </button>
                     </div>
                   </div>
+
+                  {/* Deposit and Logistics Note Box */}
+                  {bill.notes && !isEditing && (
+                    <div className="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 text-xs text-indigo-950 dark:text-indigo-200 space-y-1">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <span>ℹ️ Rent &amp; Deposit Notes:</span>
+                      </div>
+                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                        {bill.notes}
+                      </p>
+                      {bill.depositAmount && (
+                        <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                          Remaining Deposit to give next month: <strong>₹{bill.depositAmount.toLocaleString('en-IN')}</strong> (plus regular rent)
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* WhatsApp Reminder Dispatch Tray */}
                   <div className="space-y-2 pt-1">

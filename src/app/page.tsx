@@ -33,6 +33,7 @@ import {
   loadAppState,
   saveAppState,
   resetAppState,
+  clearAllTransactionsToEmpty,
   exportBackupJSON,
   importBackupJSON,
 } from '@/lib/storage';
@@ -227,6 +228,7 @@ export default function Home() {
     splitMemberIds: string[];
     notes?: string;
     customSplits?: Record<string, number>;
+    isPreCollectedSettled?: boolean;
   }) => {
     const expenseId = `exp_${Date.now()}`;
     const newExpense: Expense = {
@@ -240,6 +242,7 @@ export default function Home() {
       splitMemberIds: data.splitMemberIds,
       notes: data.notes,
       customSplits: data.customSplits,
+      isPreCollectedSettled: data.isPreCollectedSettled,
     };
 
     // Calculate exact splits with paise remainder balancing or custom amounts
@@ -248,8 +251,10 @@ export default function Home() {
         ? data.customSplits
         : calculateExactSplit(data.totalAmount, data.splitMemberIds);
 
+    const isPreSettled = !!data.isPreCollectedSettled;
     const newShares: ExpenseShare[] = data.splitMemberIds.map((mId) => {
       const isPayer = mId === data.paidById;
+      const isCompleted = isPreSettled || isPayer;
       return {
         id: `share_${Date.now()}_${mId}`,
         expenseId: expenseId,
@@ -258,19 +263,22 @@ export default function Home() {
         debtorId: mId,
         creditorId: data.paidById,
         amount: exactSplits[mId] || 0,
-        status: isPayer ? ('COMPLETED' as const) : ('ARREAR' as const),
+        status: isCompleted ? ('COMPLETED' as const) : ('ARREAR' as const),
         createdAt: new Date().toISOString(),
-        settledAt: isPayer ? new Date().toISOString() : undefined,
+        settledAt: isCompleted ? new Date().toISOString() : undefined,
+        paymentNote: isPreSettled ? 'Pre-collected by Holder before purchase' : undefined,
       };
     });
 
     // Create notification
     const newNotification: HolderNotification = {
       id: `notif_${Date.now()}`,
-      title: 'New House Expense Recorded',
-      message: `"${data.title}" of ₹${data.totalAmount} was recorded by ${
-        members.find((m) => m.id === data.paidById)?.name
-      }. Shares dynamically calculated.`,
+      title: isPreSettled ? 'Item Purchased (Pre-Collected & Settled)' : 'New House Expense Recorded',
+      message: isPreSettled
+        ? `"${data.title}" of ₹${data.totalAmount} was recorded as pre-collected & fully settled.`
+        : `"${data.title}" of ₹${data.totalAmount} was recorded by ${
+            members.find((m) => m.id === data.paidById)?.name
+          }. Shares dynamically calculated.`,
       type: 'INFO',
       timestamp: new Date().toISOString(),
       read: false,
@@ -689,6 +697,11 @@ export default function Home() {
     }));
   };
 
+  // Clear all transactions for a fresh empty register
+  const handleClearAllTransactions = () => {
+    updateState((prev) => clearAllTransactionsToEmpty(prev));
+  };
+
   // Personal Expenses (Private Diary)
   const handleSavePersonalExpense = (
     expData: Omit<PersonalExpense, 'id' | 'createdAt'>
@@ -859,6 +872,7 @@ export default function Home() {
             onDeleteExpense={handleDeleteExpense}
             onDeletePurchaseRequest={handleDeletePurchaseRequest}
             onUpdateMember={handleUpdateMember}
+            onClearAllTransactions={handleClearAllTransactions}
           />
         )}
 

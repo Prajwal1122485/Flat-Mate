@@ -42,7 +42,11 @@ import {
   FlatNotice,
 } from '@/types';
 import { formatINR } from '@/lib/calculations';
-import { generateMemberExpensePDF } from '@/lib/pdfGenerator';
+import {
+  generateMemberExpensePDF,
+  generatePurchasedItemsPDF,
+  generatePurchasedItemsCSV,
+} from '@/lib/pdfGenerator';
 
 interface MemberPortalProps {
   currentMember: Member;
@@ -422,6 +426,26 @@ export default function MemberPortal({
             title="Download strictly your personal statement PDF"
           >
             <FileDown className="w-4 h-4" />
+          </button>
+
+          {/* Download All Bought Items Register (Separate PDF & CSV) */}
+          <button
+            type="button"
+            onClick={() => generatePurchasedItemsPDF(expenses, allMembers)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors text-xs font-semibold"
+            title="Download complete register of all items bought for the flat as PDF"
+          >
+            <FileDown className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Bought Items</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => generatePurchasedItemsCSV(expenses, allMembers)}
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 transition-colors text-xs font-bold"
+            title="Export all bought items to CSV / Excel spreadsheet"
+          >
+            CSV
           </button>
         </div>
       </div>
@@ -1226,6 +1250,25 @@ export default function MemberPortal({
                 <option value="Cook & Maid">Cook &amp; Maid</option>
                 <option value="Personal">Personal</option>
               </select>
+
+              <button
+                type="button"
+                onClick={() => generatePurchasedItemsPDF(expenses, allMembers)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
+                title="Download Bought Items Register (PDF)"
+              >
+                <FileDown className="w-3.5 h-3.5 text-indigo-500" />
+                <span>PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => generatePurchasedItemsCSV(expenses, allMembers)}
+                className="px-2 py-1.5 text-xs font-bold text-emerald-500 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
+                title="Download Bought Items Register (CSV)"
+              >
+                CSV
+              </button>
             </div>
           </div>
 
@@ -1260,12 +1303,18 @@ export default function MemberPortal({
                         </span>
                         <span
                           className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                            isPaid
+                            exp.isPreCollectedSettled
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : isPaid
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
                           }`}
                         >
-                          {isPaid ? 'Settled ✓' : 'Pending Share'}
+                          {exp.isPreCollectedSettled
+                            ? 'Pre-Collected & Settled ✓'
+                            : isPaid
+                            ? 'Settled ✓'
+                            : 'Pending Share'}
                         </span>
                       </div>
 

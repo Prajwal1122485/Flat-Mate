@@ -30,9 +30,9 @@ export interface AppState {
   lastUpdated: string;
 }
 
-const STORAGE_KEY = 'FLATMATE_REGISTER_DATA_V3';
+const STORAGE_KEY = 'FLATMATE_REGISTER_DATA_V5_CLEAN';
 
-// Initial realistic seed data
+// Flat Members Directory (User can edit names/passwords/details freely)
 export const DEFAULT_MEMBERS: Member[] = [
   {
     id: 'mem_prajwal',
@@ -41,7 +41,8 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'prajwal@upi',
     isHolder: true,
     avatarBg: 'bg-indigo-600',
-    monthlyBudget: undefined, // Optional: can be Nil, 1k, 2k, etc.
+    passcode: '1234',
+    monthlyBudget: undefined,
   },
   {
     id: 'mem_rohan',
@@ -50,6 +51,7 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'rohan.kumar@okhdfcbank',
     isHolder: false,
     avatarBg: 'bg-emerald-600',
+    passcode: '0000',
     monthlyBudget: undefined,
   },
   {
@@ -59,33 +61,37 @@ export const DEFAULT_MEMBERS: Member[] = [
     upiId: 'amit.verma@paytm',
     isHolder: false,
     avatarBg: 'bg-amber-600',
+    passcode: '0000',
+    monthlyBudget: undefined,
+  },
+  {
+    id: 'mem_suresh',
+    name: 'Suresh',
+    phone: '9123456780',
+    upiId: 'suresh@upi',
+    isHolder: false,
+    avatarBg: 'bg-sky-600',
+    passcode: '0000',
+    monthlyBudget: undefined,
+  },
+  {
+    id: 'mem_kiran',
+    name: 'Kiran',
+    phone: '9443322110',
+    upiId: 'kiran@upi',
+    isHolder: false,
+    avatarBg: 'bg-purple-600',
+    passcode: '0000',
     monthlyBudget: undefined,
   },
   {
     id: 'mem_vikram',
     name: 'Vikram',
-    phone: '9123456780',
-    upiId: 'vikram.singh@ybl',
-    isHolder: false,
-    avatarBg: 'bg-sky-600',
-    monthlyBudget: undefined,
-  },
-  {
-    id: 'mem_karthik',
-    name: 'Karthik',
-    phone: '9443322110',
-    upiId: 'karthik.r@icici',
-    isHolder: false,
-    avatarBg: 'bg-purple-600',
-    monthlyBudget: undefined,
-  },
-  {
-    id: 'mem_sneha',
-    name: 'Sneha',
     phone: '9556677889',
-    upiId: 'sneha.patil@axisbank',
+    upiId: 'vikram@upi',
     isHolder: false,
     avatarBg: 'bg-rose-600',
+    passcode: '0000',
     monthlyBudget: undefined,
   },
 ];
@@ -93,21 +99,21 @@ export const DEFAULT_MEMBERS: Member[] = [
 export const DEFAULT_RECURRING_BILLS: RecurringBill[] = [
   {
     id: 'rec_rent',
-    title: 'Flat House Rent & Deposit',
+    title: 'House Rent &bull; Flat 304',
     amount: 12000, // Due on 11th
     dueDay: 11,
     category: 'Rent',
     reminderDaysBefore: 3,
     firstMonthAmount: 12000, // Month 1 given ₹12,000 towards deposit/rent
     depositAmount: 18000, // Remaining ₹18,000 deposit to be paid next month
-    regularMonthlyAmount: 12000, // Rent from next month is ₹12,000 (total due next month: 12k rent + 18k deposit)
+    regularMonthlyAmount: 12000, // Regular monthly rent
     splitMemberIds: [
       'mem_prajwal',
       'mem_rohan',
       'mem_amit',
+      'mem_suresh',
+      'mem_kiran',
       'mem_vikram',
-      'mem_karthik',
-      'mem_sneha',
     ],
     payerId: 'mem_prajwal',
     notes: 'Total deposit ₹30,000 (Given ₹12,000 now, remaining ₹18,000 deposit + ₹12,000 rent due next month on 11th)',
@@ -115,414 +121,33 @@ export const DEFAULT_RECURRING_BILLS: RecurringBill[] = [
   {
     id: 'rec_appliances',
     title: 'Washing Machine Rent',
-    amount: 1500, // Due on 15th (1st month is ₹1500 with deposit; from next month ₹500)
+    amount: 500, // Due on 15th
     dueDay: 15,
     category: 'Appliance Rental',
     reminderDaysBefore: 3,
     firstMonthAmount: 1500, // 1st month ₹1500 (deposit included)
-    regularMonthlyAmount: 500, // From next month ₹500 regular rent
-    splitMemberIds: ['mem_prajwal', 'mem_rohan', 'mem_amit', 'mem_vikram', 'mem_karthik', 'mem_sneha'],
+    regularMonthlyAmount: 500, // Regular monthly rent
+    splitMemberIds: [
+      'mem_prajwal',
+      'mem_rohan',
+      'mem_amit',
+      'mem_suresh',
+      'mem_kiran',
+      'mem_vikram',
+    ],
     payerId: 'mem_prajwal',
     notes: 'First month ₹1500 (Deposit included). From next month onwards ₹500/month.',
   },
 ];
 
-export const DEFAULT_EXPENSES: Expense[] = [
-  {
-    id: 'exp_1',
-    title: 'Weekend Groceries & Vegetables',
-    totalAmount: 2400,
-    category: 'Groceries',
-    paidById: 'mem_prajwal',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    mode: 'split',
-    splitMemberIds: [
-      'mem_prajwal',
-      'mem_rohan',
-      'mem_amit',
-      'mem_vikram',
-      'mem_karthik',
-      'mem_sneha',
-    ],
-    notes: 'Blinkit monthly essentials',
-  },
-  {
-    id: 'exp_2',
-    title: 'Bisleri 20L Water Cans (x4)',
-    totalAmount: 360,
-    category: 'Utilities',
-    paidById: 'mem_prajwal',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    mode: 'split',
-    splitMemberIds: ['mem_rohan', 'mem_amit', 'mem_vikram', 'mem_karthik'],
-    notes: 'Weekly water supply delivery',
-  },
-  {
-    id: 'exp_3',
-    title: 'Apartment Maintenance & Waste Disposal',
-    totalAmount: 1500,
-    category: 'Maintenance',
-    paidById: 'mem_prajwal',
-    createdAt: new Date(Date.now() - 8 * 86400000).toISOString(),
-    mode: 'split',
-    splitMemberIds: [
-      'mem_prajwal',
-      'mem_rohan',
-      'mem_amit',
-      'mem_vikram',
-      'mem_karthik',
-      'mem_sneha',
-    ],
-  },
-];
-
-export const DEFAULT_SHARES: ExpenseShare[] = [
-  // Exp 1: 2400 / 6 = 400 each
-  {
-    id: 'share_1_prajwal',
-    expenseId: 'exp_1',
-    expenseTitle: 'Weekend Groceries & Vegetables',
-    category: 'Groceries',
-    debtorId: 'mem_prajwal',
-    creditorId: 'mem_prajwal',
-    amount: 400,
-    status: 'COMPLETED',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    settledAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_1_rohan',
-    expenseId: 'exp_1',
-    expenseTitle: 'Weekend Groceries & Vegetables',
-    category: 'Groceries',
-    debtorId: 'mem_rohan',
-    creditorId: 'mem_prajwal',
-    amount: 400,
-    status: 'COMPLETED',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    settledAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_1_amit',
-    expenseId: 'exp_1',
-    expenseTitle: 'Weekend Groceries & Vegetables',
-    category: 'Groceries',
-    debtorId: 'mem_amit',
-    creditorId: 'mem_prajwal',
-    amount: 400,
-    status: 'ARREAR',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_1_vikram',
-    expenseId: 'exp_1',
-    expenseTitle: 'Weekend Groceries & Vegetables',
-    category: 'Groceries',
-    debtorId: 'mem_vikram',
-    creditorId: 'mem_prajwal',
-    amount: 400,
-    status: 'ARREAR',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_1_karthik',
-    expenseId: 'exp_1',
-    expenseTitle: 'Weekend Groceries & Vegetables',
-    category: 'Groceries',
-    debtorId: 'mem_karthik',
-    creditorId: 'mem_prajwal',
-    amount: 400,
-    status: 'ARREAR',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_1_sneha',
-    expenseId: 'exp_1',
-    expenseTitle: 'Weekend Groceries & Vegetables',
-    category: 'Groceries',
-    debtorId: 'mem_sneha',
-    creditorId: 'mem_prajwal',
-    amount: 400,
-    status: 'COMPLETED',
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    settledAt: new Date(Date.now() - 4 * 86400000).toISOString(),
-  },
-
-  // Exp 2: 360 / 4 = 90 each
-  {
-    id: 'share_2_rohan',
-    expenseId: 'exp_2',
-    expenseTitle: 'Bisleri 20L Water Cans (x4)',
-    category: 'Utilities',
-    debtorId: 'mem_rohan',
-    creditorId: 'mem_prajwal',
-    amount: 90,
-    status: 'ARREAR',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_2_amit',
-    expenseId: 'exp_2',
-    expenseTitle: 'Bisleri 20L Water Cans (x4)',
-    category: 'Utilities',
-    debtorId: 'mem_amit',
-    creditorId: 'mem_prajwal',
-    amount: 90,
-    status: 'ARREAR',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_2_vikram',
-    expenseId: 'exp_2',
-    expenseTitle: 'Bisleri 20L Water Cans (x4)',
-    category: 'Utilities',
-    debtorId: 'mem_vikram',
-    creditorId: 'mem_prajwal',
-    amount: 90,
-    status: 'ARREAR',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_2_karthik',
-    expenseId: 'exp_2',
-    expenseTitle: 'Bisleri 20L Water Cans (x4)',
-    category: 'Utilities',
-    debtorId: 'mem_karthik',
-    creditorId: 'mem_prajwal',
-    amount: 90,
-    status: 'ARREAR',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-
-  // Exp 3: 1500 / 6 = 250 each
-  {
-    id: 'share_3_all_settled',
-    expenseId: 'exp_3',
-    expenseTitle: 'Apartment Maintenance & Waste Disposal',
-    category: 'Maintenance',
-    debtorId: 'mem_rohan',
-    creditorId: 'mem_prajwal',
-    amount: 250,
-    status: 'COMPLETED',
-    createdAt: new Date(Date.now() - 8 * 86400000).toISOString(),
-    settledAt: new Date(Date.now() - 6 * 86400000).toISOString(),
-  },
-  {
-    id: 'share_3_amit',
-    expenseId: 'exp_3',
-    expenseTitle: 'Apartment Maintenance & Waste Disposal',
-    category: 'Maintenance',
-    debtorId: 'mem_amit',
-    creditorId: 'mem_prajwal',
-    amount: 250,
-    status: 'COMPLETED',
-    createdAt: new Date(Date.now() - 8 * 86400000).toISOString(),
-    settledAt: new Date(Date.now() - 6 * 86400000).toISOString(),
-  },
-];
-
-export const DEFAULT_PURCHASE_REQUESTS: PurchaseRequest[] = [
-  {
-    id: 'req_1',
-    title: 'Kitchen Dishwashing Gel (2L) & Scotch-Brite Sponges',
-    estimatedCost: 350,
-    requestedById: 'mem_amit',
-    notes: 'Running very low in the kitchen sink area',
-    status: 'PENDING',
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'req_2',
-    title: 'Living Room 4-Socket Power Extension Cord',
-    estimatedCost: 499,
-    requestedById: 'mem_vikram',
-    notes: 'For charging laptops when working together',
-    status: 'APPROVED',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-];
-
-export const DEFAULT_NOTIFICATIONS: HolderNotification[] = [
-  {
-    id: 'notif_1',
-    title: 'Rent Reminder Alert',
-    message: 'Flat House Rent (₹30,000) is scheduled for 11th. WhatsApp reminders ready to dispatch.',
-    type: 'RENT_ALERT',
-    timestamp: new Date().toISOString(),
-    read: false,
-  },
-  {
-    id: 'notif_2',
-    title: 'New House Purchase Request',
-    message: 'Amit requested Kitchen Dishwashing Gel (Est. ₹350)',
-    type: 'PURCHASE_REQUEST',
-    timestamp: new Date(Date.now() - 86400000).toISOString(),
-    read: false,
-  },
-];
-
-export const DEFAULT_PERSONAL_EXPENSES: PersonalExpense[] = [
-  {
-    id: 'pexp_1',
-    memberId: 'mem_prajwal',
-    title: 'Monthly Gym Protein Powder & Shaker',
-    amount: 2400,
-    category: 'Health & Fitness',
-    date: new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10),
-    notes: 'Personal fitness goal',
-    createdAt: new Date(Date.now() - 4 * 86400000).toISOString(),
-  },
-  {
-    id: 'pexp_2',
-    memberId: 'mem_prajwal',
-    title: 'Personal Spotify & YouTube Premium',
-    amount: 299,
-    category: 'Subscriptions & Bills',
-    date: new Date(Date.now() - 8 * 86400000).toISOString().slice(0, 10),
-    notes: 'Personal entertainment',
-    createdAt: new Date(Date.now() - 8 * 86400000).toISOString(),
-  },
-  {
-    id: 'pexp_3',
-    memberId: 'mem_rohan',
-    title: 'Namma Metro Smart Card Recharge',
-    amount: 600,
-    category: 'Commute & Travel',
-    date: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10),
-    notes: 'Work commute to tech park',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: 'pexp_4',
-    memberId: 'mem_rohan',
-    title: 'Evening snacks & chai with colleagues',
-    amount: 180,
-    category: 'Food & Snacks',
-    date: new Date(Date.now() - 1 * 86400000).toISOString().slice(0, 10),
-    createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-  },
-  {
-    id: 'pexp_5',
-    memberId: 'mem_amit',
-    title: 'Bike Petrol Refuel',
-    amount: 550,
-    category: 'Commute & Travel',
-    date: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10),
-    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-  },
-];
-
-export const DEFAULT_PANTRY_ITEMS: PantryItem[] = [
-  {
-    id: 'pantry_1',
-    name: '20L Bisleri Mineral Water Cans',
-    category: 'Water & Gas',
-    status: 'IN_STOCK',
-    quantity: '2 cans full, 1 on dispenser',
-    updatedAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'pantry_2',
-    name: 'Fortune Sunlite Sunflower Cooking Oil (5L)',
-    category: 'Groceries',
-    status: 'RUNNING_LOW',
-    quantity: 'Approx 0.5 L remaining',
-    updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: 'pantry_3',
-    name: 'Madhur Refined Sugar (5 Kg)',
-    category: 'Groceries',
-    status: 'IN_STOCK',
-    quantity: '3.5 kg in jar',
-    updatedAt: new Date(Date.now() - 4 * 86400000).toISOString(),
-  },
-  {
-    id: 'pantry_4',
-    name: 'Tata Tea Gold & Bru Instant Coffee',
-    category: 'Groceries',
-    status: 'IN_STOCK',
-    quantity: 'Full jar',
-    updatedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-  },
-  {
-    id: 'pantry_5',
-    name: 'Vim Dishwash Gel (750ml) + Scotch Brite',
-    category: 'Cleaning',
-    status: 'RUNNING_LOW',
-    quantity: 'Less than 100ml left',
-    updatedAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'pantry_6',
-    name: 'Surf Excel Matic Liquid Detergent',
-    category: 'Cleaning',
-    status: 'IN_STOCK',
-    quantity: '2L bottle half full',
-    updatedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-  },
-  {
-    id: 'pantry_7',
-    name: 'Black Garbage Trash Bags (Medium 30 Pcs)',
-    category: 'Cleaning',
-    status: 'OUT_OF_STOCK',
-    quantity: 'Completely finished',
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'pantry_8',
-    name: 'Dettol Handwash Liquid Refill (1.5L)',
-    category: 'Toiletries',
-    status: 'IN_STOCK',
-    quantity: '1 pouch available',
-    updatedAt: new Date(Date.now() - 6 * 86400000).toISOString(),
-  },
-];
-
-export const DEFAULT_CHORES: FlatChore[] = [
-  {
-    id: 'chore_1',
-    title: 'Kitchen Counter & Cooking Stove Wipe-down',
-    assignedMemberId: 'mem_amit',
-    frequency: 'Weekly',
-    dueDay: 'Every Wednesday',
-    status: 'PENDING',
-  },
-  {
-    id: 'chore_2',
-    title: 'Daily Trash Bag Tying & Doorstep Placement',
-    assignedMemberId: 'mem_rohan',
-    frequency: 'Daily',
-    dueDay: 'Daily by 8:30 AM',
-    status: 'DONE',
-    lastCompletedAt: new Date().toISOString(),
-  },
-  {
-    id: 'chore_3',
-    title: 'Water Dispenser Empty Can Replacement & Vendor Call',
-    assignedMemberId: 'mem_vikram',
-    frequency: 'Weekly',
-    dueDay: 'Every Friday',
-    status: 'PENDING',
-  },
-  {
-    id: 'chore_4',
-    title: 'Living Room & Dining Area Vacuum / Sweeping',
-    assignedMemberId: 'mem_karthik',
-    frequency: 'Weekly',
-    dueDay: 'Every Sunday',
-    status: 'PENDING',
-  },
-  {
-    id: 'chore_5',
-    title: 'Refrigerator De-clutter & Vegetable Tray Cleaning',
-    assignedMemberId: 'mem_sneha',
-    frequency: 'Bi-Weekly',
-    dueDay: '2nd & 4th Saturday',
-    status: 'DONE',
-    lastCompletedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-  },
-];
+// Clean 100% empty initial records ready for user choice
+export const DEFAULT_EXPENSES: Expense[] = [];
+export const DEFAULT_SHARES: ExpenseShare[] = [];
+export const DEFAULT_PURCHASE_REQUESTS: PurchaseRequest[] = [];
+export const DEFAULT_NOTIFICATIONS: HolderNotification[] = [];
+export const DEFAULT_PERSONAL_EXPENSES: PersonalExpense[] = [];
+export const DEFAULT_PANTRY_ITEMS: PantryItem[] = [];
+export const DEFAULT_CHORES: FlatChore[] = [];
 
 export const DEFAULT_CONTACTS: FlatContact[] = [
   {
@@ -530,7 +155,7 @@ export const DEFAULT_CONTACTS: FlatContact[] = [
     role: 'Flat Owner / Landlord',
     name: 'Mr. Ramesh Sharma',
     phone: '9820011223',
-    notes: 'For lease agreement, NEFT rent receipt on 11th',
+    notes: 'For lease agreement, rent receipt on 11th',
   },
   {
     id: 'cont_2',
@@ -575,14 +200,7 @@ export const DEFAULT_NOTICES: FlatNotice[] = [
     title: 'Doorstep Waste Collection Timing',
     content: 'BBMP collection staff arrives daily at 8:45 AM. Segregate wet and dry waste into separate bins outside door.',
     isImportant: false,
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-  },
-  {
-    id: 'notice_2',
-    title: 'Quiet Hours & Late Night Courtesy',
-    content: 'Please keep music, gaming, and television volume low after 10:30 PM on weekdays in respect of roommates.',
-    isImportant: false,
-    createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
+    createdAt: new Date().toISOString(),
   },
 ];
 
@@ -623,14 +241,14 @@ export function loadAppState(): AppState {
       ...initial,
       ...parsed,
       holderPasscode: parsed.holderPasscode || '1234',
-      personalExpenses: parsed.personalExpenses || initial.personalExpenses,
-      pantryItems: parsed.pantryItems || initial.pantryItems,
-      chores: parsed.chores || initial.chores,
+      personalExpenses: parsed.personalExpenses || [],
+      pantryItems: parsed.pantryItems || [],
+      chores: parsed.chores || [],
       contacts: parsed.contacts || initial.contacts,
       notices: parsed.notices || initial.notices,
     };
   } catch (err) {
-    console.error('Failed to parse FlatMate storage, resetting to default', err);
+    console.error('Failed to parse Flat-Mate storage, resetting to default', err);
     return getInitialAppState();
   }
 }
@@ -651,6 +269,33 @@ export function resetAppState(): AppState {
   const initial = getInitialAppState();
   saveAppState(initial);
   return initial;
+}
+
+/**
+ * Resets all transaction records, shares, claims, and diary items to 0 while keeping members and passcodes intact.
+ */
+export function clearAllTransactionsToEmpty(currentState: AppState): AppState {
+  const emptyState: AppState = {
+    ...currentState,
+    expenses: [],
+    shares: [],
+    purchaseRequests: [],
+    paymentClaims: [],
+    personalExpenses: [],
+    notifications: [
+      {
+        id: `notif_${Date.now()}`,
+        title: 'Empty Register Ready',
+        message: 'All records cleared. Ready to add your real items and split settlements.',
+        type: 'INFO',
+        timestamp: new Date().toISOString(),
+        read: false,
+      },
+    ],
+    lastUpdated: new Date().toISOString(),
+  };
+  saveAppState(emptyState);
+  return emptyState;
 }
 
 export function exportBackupJSON(state: AppState): void {

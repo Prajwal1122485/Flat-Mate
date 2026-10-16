@@ -48,6 +48,7 @@ export interface Expense {
   customSplits?: Record<string, number>; // optional custom exact amount per member
   notes?: string;
   isRecurringGenerated?: boolean;
+  isPreCollectedSettled?: boolean; // True when holder collected everyone's share in advance before purchasing
 }
 
 export type ShareStatus = 'ARREAR' | 'CLAIMED_PAID' | 'COMPLETED';

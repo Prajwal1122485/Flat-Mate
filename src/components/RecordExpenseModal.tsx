@@ -30,6 +30,7 @@ interface RecordExpenseModalProps {
     splitMemberIds: string[];
     customSplits?: Record<string, number>;
     notes?: string;
+    isPreCollectedSettled?: boolean;
   }) => void;
 }
 
@@ -63,6 +64,7 @@ export default function RecordExpenseModal({
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
   const [soloMemberId, setSoloMemberId] = useState<string>(holder.id);
   const [notes, setNotes] = useState('');
+  const [isPreCollectedSettled, setIsPreCollectedSettled] = useState<boolean>(false);
 
   // Dynamic live calculation of splits
   const totalAmount = parseFloat(amountStr) || 0;
@@ -156,6 +158,7 @@ export default function RecordExpenseModal({
       splitMemberIds: mode === 'split' ? selectedMemberIds : [soloMemberId],
       customSplits: finalCustomSplits,
       notes: notes.trim() || undefined,
+      isPreCollectedSettled,
     });
 
     // Reset and close
@@ -164,6 +167,7 @@ export default function RecordExpenseModal({
     setNotes('');
     setSplitType('equal');
     setCustomAmounts({});
+    setIsPreCollectedSettled(false);
     onClose();
   };
 
@@ -586,6 +590,62 @@ export default function RecordExpenseModal({
             </div>
           )}
 
+          {/* Settlement / Collection Mode */}
+          {mode === 'split' && (
+            <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Payment &amp; Settlement Flow
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Did Holder collect funds before buying?
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPreCollectedSettled(false)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    !isPreCollectedSettled
+                      ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/50 text-slate-900 dark:text-white shadow-sm'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-500'
+                  }`}
+                >
+                  <div className="font-bold text-xs flex items-center gap-1.5">
+                    <span>Split in Arrears (Default)</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Payer pays upfront. Others owe their share as pending debts until cleared.
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPreCollectedSettled(true)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    isPreCollectedSettled
+                      ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/50 text-slate-900 dark:text-white ring-1 ring-emerald-500/40 shadow-sm'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-500'
+                  }`}
+                >
+                  <div className="font-bold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <span>✓ Pre-Collected &amp; Settled</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Holder collected everyone&apos;s share first and then bought. All shares marked Completed right away!
+                  </div>
+                </button>
+              </div>
+
+              {isPreCollectedSettled && totalAmount > 0 && selectedMemberIds.length > 0 && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs">
+                  ✓ Advance collected: <strong>{formatINR(totalAmount / selectedMemberIds.length)}</strong> each from all <strong>{selectedMemberIds.length}</strong> mates. Zero arrears will be created!
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Notes */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
@@ -595,7 +655,7 @@ export default function RecordExpenseModal({
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Swiggy Instamart Order #84729"
+              placeholder="e.g. Swiggy Instamart, Cash collected on spot"
               className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -616,10 +676,18 @@ export default function RecordExpenseModal({
                 totalAmount <= 0 ||
                 (mode === 'split' && selectedMemberIds.length === 0)
               }
-              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-sm transition-all transform active:scale-95"
+              className={`inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-sm transition-all transform active:scale-95 ${
+                isPreCollectedSettled
+                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
+              }`}
             >
               <PlusCircle className="w-4 h-4" />
-              <span>Record &amp; Create Split</span>
+              <span>
+                {isPreCollectedSettled
+                  ? 'Save as Pre-Collected & Settled ✓'
+                  : 'Record & Create Split'}
+              </span>
             </button>
           </div>
         </form>

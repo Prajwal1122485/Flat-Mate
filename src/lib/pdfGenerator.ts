@@ -352,3 +352,196 @@ export function generateHolderMasterAuditPDF(
 
   doc.save('FlatMate_Master_Audit_Report.pdf');
 }
+
+/**
+ * Generates an isolated Purchased & Bought Items Statement PDF for the flat.
+ */
+export function generatePurchasedItemsPDF(
+  expenses: Expense[],
+  members: Member[]
+) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const totalSpend = expenses.reduce((sum, e) => sum + e.totalAmount, 0);
+  const preCollectedSpend = expenses
+    .filter((e) => e.isPreCollectedSettled)
+    .reduce((sum, e) => sum + e.totalAmount, 0);
+
+  // Top Banner
+  doc.setFillColor(15, 23, 42); // Slate-900
+  doc.rect(0, 0, 210, 32, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('FLAT-MATE - BOUGHT & PURCHASED ITEMS REGISTER', 14, 15);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(203, 213, 225);
+  doc.text('Complete Record of Items Bought, Pre-Collected & Split for Flat 304', 14, 23);
+
+  const printDate = new Date().toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+  doc.text(`Exported: ${printDate}`, 155, 23);
+
+  // Summary Metrics Box
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(14, 38, 182, 24, 2, 2, 'FD');
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(100, 116, 139);
+  doc.text('TOTAL ITEMS BROUGHT', 22, 47);
+  doc.text('TOTAL AMOUNT SPENT', 82, 47);
+  doc.text('PRE-COLLECTED & SETTLED', 142, 47);
+
+  doc.setFontSize(12);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${expenses.length} Items`, 22, 54);
+
+  doc.setTextColor(79, 70, 229);
+  doc.text(`Rs. ${totalSpend.toFixed(2)}`, 82, 54);
+
+  doc.setTextColor(22, 101, 52);
+  doc.text(`Rs. ${preCollectedSpend.toFixed(2)}`, 142, 54);
+
+  // Table
+  let y = 72;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Purchased Items Inventory', 14, y);
+
+  y += 6;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(14, y, 182, 8, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+
+  doc.text('DATE', 17, y + 5.5);
+  doc.text('ITEM NAME', 40, y + 5.5);
+  doc.text('CATEGORY', 90, y + 5.5);
+  doc.text('PURCHASED BY', 125, y + 5.5);
+  doc.text('SETTLEMENT', 155, y + 5.5);
+  doc.text('AMOUNT', 182, y + 5.5);
+
+  y += 10;
+  doc.setFont('helvetica', 'normal');
+
+  expenses.forEach((exp, idx) => {
+    if (y > 270) {
+      doc.addPage();
+      y = 20;
+    }
+
+    if (idx % 2 === 1) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(14, y - 2, 182, 8, 'F');
+    }
+
+    const payer = memberMap.get(exp.paidById)?.name || 'Holder';
+    const dt = new Date(exp.createdAt).toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+    });
+
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    doc.text(dt, 17, y + 3.5);
+
+    doc.setTextColor(15, 23, 42);
+    doc.text(exp.title.slice(0, 22), 40, y + 3.5);
+
+    doc.setTextColor(71, 85, 105);
+    doc.text(exp.category, 90, y + 3.5);
+    doc.text(payer, 125, y + 3.5);
+
+    if (exp.isPreCollectedSettled) {
+      doc.setTextColor(22, 101, 52);
+      doc.text('Pre-Collected', 155, y + 3.5);
+    } else {
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Split (${exp.splitMemberIds.length})`, 155, y + 3.5);
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Rs. ${exp.totalAmount}`, 182, y + 3.5);
+    doc.setFont('helvetica', 'normal');
+
+    y += 8;
+  });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Flat-Mate Purchased Items Register - Page ${i} of ${pageCount}`, 14, 288);
+  }
+
+  doc.save('Flat_Purchased_Items_Register.pdf');
+}
+
+/**
+ * Exports purchased items register to CSV format.
+ */
+export function generatePurchasedItemsCSV(expenses: Expense[], members: Member[]) {
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const headers = [
+    'Date',
+    'Item Name',
+    'Category',
+    'Total Amount (INR)',
+    'Purchased By',
+    'Split Count',
+    'Split Members',
+    'Per Person Share (INR)',
+    'Settlement Mode',
+    'Notes',
+  ];
+
+  const rows = expenses.map((exp) => {
+    const payer = memberMap.get(exp.paidById)?.name || 'Holder';
+    const splitNames = exp.splitMemberIds
+      .map((id) => memberMap.get(id)?.name || id)
+      .join('; ');
+    const shareEach = (exp.totalAmount / (exp.splitMemberIds.length || 1)).toFixed(2);
+    const modeStr = exp.isPreCollectedSettled
+      ? 'Pre-Collected & Fully Settled'
+      : 'Split in Arrears';
+    const cleanDate = new Date(exp.createdAt).toISOString().slice(0, 10);
+
+    return [
+      cleanDate,
+      `"${exp.title.replace(/"/g, '""')}"`,
+      `"${exp.category}"`,
+      exp.totalAmount,
+      `"${payer}"`,
+      exp.splitMemberIds.length,
+      `"${splitNames}"`,
+      shareEach,
+      `"${modeStr}"`,
+      `"${(exp.notes || '').replace(/"/g, '""')}"`,
+    ];
+  });
+
+  const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Flat_Purchases_Register_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

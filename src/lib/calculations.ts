@@ -230,3 +230,67 @@ export function getDirectDebtSummaries(members: Member[], shares: ExpenseShare[]
 
   return results.sort((a, b) => b.amount - a.amount);
 }
+
+export interface AutomatedRentReminder {
+  billId: string;
+  billTitle: string;
+  dueDay: number;
+  formattedDueDate: string;
+  daysRemaining: number;
+  debtor: Member;
+  amount: number;
+  whatsappUrl: string;
+}
+
+export function getAutomatedRentReminders(
+  recurringBills: RecurringBill[],
+  members: Member[],
+  shares: ExpenseShare[],
+  holder: Member
+): AutomatedRentReminder[] {
+  const reminders: AutomatedRentReminder[] = [];
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+
+  recurringBills.forEach((bill) => {
+    const status = getRecurringBillStatus(bill);
+    if (status.isWithinReminderWindow) {
+      const splitTargets =
+        bill.splitMemberIds && bill.splitMemberIds.length > 0
+          ? bill.splitMemberIds
+          : members.map((m) => m.id);
+
+      const perPerson = bill.amount / splitTargets.length;
+
+      splitTargets.forEach((targetId) => {
+        if (targetId === bill.payerId) return;
+        const targetMember = memberMap.get(targetId);
+        if (!targetMember) return;
+
+        const msg = buildRentReminderText({
+          memberName: targetMember.name,
+          holderName: holder.name,
+          holderUpiId: holder.upiId || 'via portal',
+          billTitle: bill.title,
+          dueDay: bill.dueDay,
+          formattedDueDate: status.formattedDueDate,
+          daysRemaining: status.daysRemaining,
+          perPersonShare: perPerson,
+        });
+
+        reminders.push({
+          billId: bill.id,
+          billTitle: bill.title,
+          dueDay: bill.dueDay,
+          formattedDueDate: status.formattedDueDate,
+          daysRemaining: status.daysRemaining,
+          debtor: targetMember,
+          amount: Math.round(perPerson * 100) / 100,
+          whatsappUrl: generateWhatsAppLink(targetMember.phone, msg),
+        });
+      });
+    }
+  });
+
+  return reminders;
+}
+

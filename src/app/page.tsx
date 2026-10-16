@@ -92,14 +92,21 @@ export default function Home() {
       }
     );
 
-    // Cross-tab synchronization
-    const handleStorageUpdate = () => {
+    // Cross-tab synchronization via native storage event and local custom event
+    const reloadLocalState = () => {
       setAppState(loadAppState());
     };
-    window.addEventListener('flatmate-storage-update', handleStorageUpdate);
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (!e.key || e.key.includes('FLATMATE_REGISTER_DATA')) {
+        reloadLocalState();
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
+    window.addEventListener('flatmate-storage-update', reloadLocalState);
     return () => {
       unsubscribeFirebase();
-      window.removeEventListener('flatmate-storage-update', handleStorageUpdate);
+      window.removeEventListener('storage', handleStorageEvent);
+      window.removeEventListener('flatmate-storage-update', reloadLocalState);
     };
   }, []);
 

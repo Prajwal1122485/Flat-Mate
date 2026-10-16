@@ -120,10 +120,15 @@ export function subscribeToFirebaseSync(
       .then((snap) => {
         if (!snap.exists()) {
           const localState = loadAppState();
-          setDoc(flatDocRef, {
-            ...localState,
-            lastUpdated: new Date().toISOString(),
-          }).catch((e) => console.warn('Cloud initial seed notice:', e.message));
+          const cleanLocal = JSON.parse(
+            JSON.stringify({
+              ...localState,
+              lastUpdated: new Date().toISOString(),
+            })
+          );
+          setDoc(flatDocRef, cleanLocal).catch((e) =>
+            console.warn('Cloud initial seed notice:', e.message)
+          );
         } else {
           // Immediately apply remote data so user doesn't wait
           const remoteData = snap.data() as AppState;
@@ -169,29 +174,39 @@ export function subscribeToFirebaseSync(
 }
 
 /**
+ * Sanitizes object by removing all undefined fields which Firestore rejects.
+ */
+export function sanitizeStateForFirestore(state: AppState): Record<string, any> {
+  return JSON.parse(JSON.stringify(state));
+}
+
+/**
  * Pushes state change to Firestore in the background.
  */
 export async function pushStateToFirebase(
   state: AppState,
   flatId: string = 'flat_304'
-): Promise<void> {
+): Promise<boolean> {
   if (!isFirebaseConfigured()) {
-    return;
+    return false;
   }
 
   try {
     const firestore = db || getFirebaseDb();
-    if (!firestore) return;
+    if (!firestore) return false;
 
     const flatDocRef = doc(firestore, COLLECTION_NAME, flatId, 'state', DOC_ID);
-    await setDoc(flatDocRef, {
+    const sanitizedPayload = sanitizeStateForFirestore({
       ...state,
       lastUpdated: new Date().toISOString(),
     });
+    await setDoc(flatDocRef, sanitizedPayload);
     broadcastStatus('connected');
+    return true;
   } catch (err: any) {
-    console.warn('Notice syncing state to Firestore:', err);
+    console.error('Critical notice syncing state to Firestore:', err);
     broadcastStatus('error', err?.message);
+    return false;
   }
 }
 
@@ -209,7 +224,11 @@ export async function wipeFirestoreToBlank(
       const firestore = db || getFirebaseDb();
       if (firestore) {
         const flatDocRef = doc(firestore, COLLECTION_NAME, flatId, 'state', DOC_ID);
-        await setDoc(flatDocRef, blankState);
+        const cleanPayload = sanitizeStateForFirestore({
+          ...blankState,
+          lastUpdated: new Date().toISOString(),
+        });
+        await setDoc(flatDocRef, cleanPayload);
         broadcastStatus('connected');
       }
     } catch (err: any) {

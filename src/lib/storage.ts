@@ -42,7 +42,6 @@ export const DEFAULT_MEMBERS: Member[] = [
     isHolder: true,
     avatarBg: 'bg-amber-600',
     passcode: '1234',
-    monthlyBudget: undefined,
   },
   {
     id: 'mem_prajwal',
@@ -52,7 +51,6 @@ export const DEFAULT_MEMBERS: Member[] = [
     isHolder: false,
     avatarBg: 'bg-indigo-600',
     passcode: '1234',
-    monthlyBudget: undefined,
   },
 ];
 

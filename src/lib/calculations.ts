@@ -144,6 +144,44 @@ export function buildArrearReminderText(params: {
 }
 
 /**
+ * Calculates a specific member's total share and detailed line-item breakdown for a bill,
+ * including base bill and all attached (+) sub-items (furniture, chairs, tables, deposit).
+ */
+export function calculateMemberBillShare(
+  bill: RecurringBill,
+  memberId: string
+): { total: number; breakdown: { title: string; amount: number }[] } {
+  const breakdown: { title: string; amount: number }[] = [];
+
+  // 1. Base bill share
+  const baseMembers = bill.splitMemberIds || [];
+  if (baseMembers.includes(memberId) && baseMembers.length > 0) {
+    const baseShare = Math.round((bill.amount / baseMembers.length) * 100) / 100;
+    breakdown.push({
+      title: bill.title,
+      amount: baseShare,
+    });
+  }
+
+  // 2. Sub-items (furniture, chairs, tables, extra deposit, maintenance)
+  if (bill.subItems && bill.subItems.length > 0) {
+    bill.subItems.forEach((sub) => {
+      const subMems = sub.memberIds || [];
+      if (subMems.includes(memberId) && subMems.length > 0) {
+        const subShare = Math.round((sub.amount / subMems.length) * 100) / 100;
+        breakdown.push({
+          title: sub.title,
+          amount: subShare,
+        });
+      }
+    });
+  }
+
+  const total = breakdown.reduce((sum, item) => sum + item.amount, 0);
+  return { total, breakdown };
+}
+
+/**
  * Constructs the rent reminder message (sent 3 days prior to 11th / 15th).
  */
 export function buildRentReminderText(params: {
@@ -155,19 +193,45 @@ export function buildRentReminderText(params: {
   formattedDueDate: string;
   daysRemaining: number;
   perPersonShare: number;
+  breakdown?: { title: string; amount: number }[];
 }): string {
-  const { memberName, holderName, holderUpiId, billTitle, formattedDueDate, daysRemaining, perPersonShare } = params;
+  const {
+    memberName,
+    holderName,
+    holderUpiId,
+    billTitle,
+    formattedDueDate,
+    daysRemaining,
+    perPersonShare,
+    breakdown,
+  } = params;
   const formattedAmt = `₹${perPersonShare.toFixed(2)}`;
 
-  const urgency = daysRemaining === 0 ? 'DUE TODAY' : `due in ${daysRemaining} day${daysRemaining > 1 ? 's' : ''}`;
+  const urgency =
+    daysRemaining === 0
+      ? 'DUE TODAY'
+      : `due in ${daysRemaining} day${daysRemaining > 1 ? 's' : ''}`;
 
-  let msg = `🔔 *Flat Rent Reminder - ${urgency}*\n\n`;
-  msg += `Hi ${memberName},\n`;
-  msg += `The *${billTitle}* is scheduled for *${formattedDueDate}*.\n\n`;
-  msg += `🏷️ Your share: *${formattedAmt}*\n`;
+  let msg = `🔔 *Flat Rent & Bills Reminder - ${urgency}*\n\n`;
+  msg += `Hi ${memberName}! 👋\n`;
+  msg += `This is a reminder for *${billTitle}* scheduled for *${formattedDueDate}*.\n\n`;
+
+  if (breakdown && breakdown.length > 0) {
+    msg += `📋 *Itemized Details:*\n`;
+    breakdown.forEach((item) => {
+      msg += `  • ${item.title}: ₹${item.amount.toFixed(2)}\n`;
+    });
+    msg += `👉 *Total to Pay:* *${formattedAmt}*\n\n`;
+  } else {
+    msg += `🏷️ Your share: *${formattedAmt}*\n\n`;
+  }
+
   msg += `👤 Send to Holder: *${holderName}*\n`;
-  msg += `💳 Holder UPI ID: *${holderUpiId}*\n\n`;
-  msg += `Please complete the payment on or before the due date so the landlord/service can be settled on time. Thank you! 🙏`;
+  if (holderUpiId) {
+    msg += `💳 Holder UPI ID: *${holderUpiId}*\n`;
+    msg += `👉 (Scan Holder QR on our Flat-Mate App)\n\n`;
+  }
+  msg += `Please complete the payment on or before the due date. Once paid, mark it in the app. Thank you! 🙏`;
   return msg;
 }
 

@@ -676,23 +676,40 @@ export default function Home() {
   };
 
   // Generate Expense from Recurring Bill
-  const handleGenerateExpenseFromBill = (bill: RecurringBill, targetMemberIds?: string[]) => {
+  const handleGenerateExpenseFromBill = (
+    bill: RecurringBill,
+    targetMemberIds?: string[],
+    customSplits?: Record<string, number>
+  ) => {
     const splitTargets =
       targetMemberIds && targetMemberIds.length > 0
         ? targetMemberIds
         : bill.splitMemberIds || members.map((m) => m.id);
 
+    // Total amount including sub-items
+    const subItemsTotal = (bill.subItems || []).reduce((sum, s) => sum + s.amount, 0);
+    const totalAmount = bill.amount + subItemsTotal;
+
     handleSaveExpense({
       title: `${bill.title} (${new Date().toLocaleString('default', {
         month: 'short',
       })})`,
-      totalAmount: bill.amount,
+      totalAmount,
       category: bill.category,
       paidById: bill.payerId,
       mode: 'split',
       splitMemberIds: splitTargets,
+      customSplits: customSplits,
       notes: `Generated from recurring bill schedule (due on ${bill.dueDay}th) • Split among ${splitTargets.length} mates`,
     });
+
+    // Also update bill.splitMemberIds in recurringBills in state
+    updateState((prev) => ({
+      ...prev,
+      recurringBills: prev.recurringBills.map((b) =>
+        b.id === bill.id ? { ...b, splitMemberIds: splitTargets } : b
+      ),
+    }));
   };
 
   // Update Member

@@ -15,16 +15,16 @@ import {
   Bell,
   Split,
   Trash2,
-  Users,
-  User,
-  CheckSquare,
+  Tag,
+  Layers,
 } from 'lucide-react';
-import { RecurringBill, Member, ExpenseCategory } from '@/types';
+import { RecurringBill, Member, ExpenseCategory, BillSubItem } from '@/types';
 import {
   getRecurringBillStatus,
   formatINR,
   generateWhatsAppLink,
   buildRentReminderText,
+  calculateMemberBillShare,
 } from '@/lib/calculations';
 
 interface RentManagerModalProps {
@@ -35,7 +35,11 @@ interface RentManagerModalProps {
   holder: Member;
   onUpdateBill: (updatedBill: RecurringBill) => void;
   onAddNewBill: (newBill: RecurringBill) => void;
-  onGenerateExpenseFromBill: (bill: RecurringBill, targetMemberIds?: string[]) => void;
+  onGenerateExpenseFromBill: (
+    bill: RecurringBill,
+    targetMemberIds?: string[],
+    customSplits?: Record<string, number>
+  ) => void;
   onDeleteBill?: (billId: string) => void;
 }
 
@@ -57,11 +61,20 @@ export default function RentManagerModal({
   const [editNotes, setEditNotes] = useState<string>('');
   const [editSplitMemberIds, setEditSplitMemberIds] = useState<string[]>([]);
 
-  // Split popover / drawer when clicking "Post into Split"
+  // Split popover / drawer when clicking "Split"
   const [splittingBillId, setSplittingBillId] = useState<string | null>(null);
   const [billSplitMode, setBillSplitMode] = useState<'all' | '1to1' | 'selected'>('all');
   const [billOneToOneMateId, setBillOneToOneMateId] = useState<string>('');
   const [billSelectedMates, setBillSelectedMates] = useState<string[]>([]);
+  const [splitSuccessBillId, setSplitSuccessBillId] = useState<string | null>(null);
+
+  // Sub-item (+) addition state (for adding table, chair, deposit, extra item to a bill)
+  const [addingSubItemBillId, setAddingSubItemBillId] = useState<string | null>(null);
+  const [newSubTitle, setNewSubTitle] = useState('');
+  const [newSubAmount, setNewSubAmount] = useState('');
+  const [newSubTarget, setNewSubTarget] = useState<'single' | 'selected' | 'all'>('single');
+  const [newSubSingleMemberId, setNewSubSingleMemberId] = useState<string>('');
+  const [newSubSelectedMemberIds, setNewSubSelectedMemberIds] = useState<string[]>([]);
 
   // Add new bill state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -129,8 +142,99 @@ export default function RentManagerModal({
         billSelectedMates.length > 0 ? billSelectedMates : members.map((m) => m.id);
     }
 
-    onGenerateExpenseFromBill(bill, finalTargets);
+    const tempBill: RecurringBill = {
+      ...bill,
+      splitMemberIds: finalTargets,
+    };
+
+    const customSplits: Record<string, number> = {};
+    finalTargets.forEach((mId) => {
+      const shareData = calculateMemberBillShare(tempBill, mId);
+      customSplits[mId] = shareData.total;
+    });
+
+    // Also include any other members who only have subItems assigned on this bill
+    (bill.subItems || []).forEach((sub) => {
+      (sub.memberIds || []).forEach((subMId) => {
+        if (!finalTargets.includes(subMId)) {
+          finalTargets.push(subMId);
+          const shareData = calculateMemberBillShare(tempBill, subMId);
+          customSplits[subMId] = shareData.total;
+        }
+      });
+    });
+
+    // Update the bill so splitMemberIds immediately reflects in the UI
+    onUpdateBill({
+      ...bill,
+      splitMemberIds: finalTargets,
+    });
+
+    // Execute split
+    onGenerateExpenseFromBill(
+      { ...bill, splitMemberIds: finalTargets },
+      finalTargets,
+      customSplits
+    );
+
     setSplittingBillId(null);
+    setSplitSuccessBillId(bill.id);
+    setTimeout(() => {
+      setSplitSuccessBillId(null);
+    }, 4000);
+  };
+
+  // Sub-item handlers
+  const handleOpenAddSubItem = (billId: string) => {
+    setAddingSubItemBillId(billId);
+    setNewSubTitle('');
+    setNewSubAmount('');
+    setNewSubTarget('single');
+    const firstOther = members.find((m) => m.id !== holder.id) || members[0];
+    setNewSubSingleMemberId(firstOther ? firstOther.id : members[0]?.id || '');
+    setNewSubSelectedMemberIds([firstOther ? firstOther.id : members[0]?.id || '']);
+  };
+
+  const handleSaveSubItem = (bill: RecurringBill) => {
+    const amt = parseFloat(newSubAmount);
+    if (!newSubTitle.trim() || isNaN(amt) || amt <= 0) return;
+
+    let targetMems: string[] = [];
+    if (newSubTarget === 'single') {
+      targetMems = [newSubSingleMemberId];
+    } else if (newSubTarget === 'all') {
+      targetMems = members.map((m) => m.id);
+    } else {
+      targetMems =
+        newSubSelectedMemberIds.length > 0
+          ? newSubSelectedMemberIds
+          : [members[0]?.id || ''];
+    }
+
+    const newSub: BillSubItem = {
+      id: `sub_${Date.now()}`,
+      title: newSubTitle.trim(),
+      amount: amt,
+      memberIds: targetMems,
+    };
+
+    const updatedSubItems = [...(bill.subItems || []), newSub];
+    onUpdateBill({
+      ...bill,
+      subItems: updatedSubItems,
+    });
+
+    setAddingSubItemBillId(null);
+    setNewSubTitle('');
+    setNewSubAmount('');
+  };
+
+  const handleDeleteSubItem = (bill: RecurringBill, subId: string) => {
+    const updatedSubItems = (bill.subItems || []).filter((s) => s.id !== subId);
+    onUpdateBill({
+      ...bill,
+      subItems: updatedSubItems,
+    });
   };
 
   const handleCreateNew = (e: React.FormEvent) => {
@@ -151,6 +255,7 @@ export default function RentManagerModal({
           ? newSplitMemberIds
           : members.map((m) => m.id),
       payerId: holder.id,
+      subItems: [],
     });
 
     setShowAddForm(false);
@@ -160,29 +265,29 @@ export default function RentManagerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-3xl max-h-[88vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+        className="relative w-full max-w-3xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80">
+        <div className="sticky top-0 z-20 flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl">
               <Calendar className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                   Recurring Rents &amp; Bills Hub
                 </h2>
                 <span className="px-2 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 rounded-full">
                   Holder Controlled
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                House Rent (11th), Appliances (15th) • Split options &amp; WhatsApp notifications
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                Manage base rents, sub-items (table, chair, deposit), split controls &amp; WhatsApp reminders
               </p>
             </div>
           </div>
@@ -195,15 +300,15 @@ export default function RentManagerModal({
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 mobile-scroll">
           {/* Top Notice */}
-          <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/40 text-xs text-amber-900 dark:text-amber-300 flex items-start gap-3">
+          <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/40 text-xs text-amber-900 dark:text-amber-300 flex items-start gap-3">
             <Bell className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
             <div>
-              <strong className="font-semibold">Split &amp; 3-Day Prior WhatsApp Reminder Protocol:</strong>
-              <p className="mt-0.5 text-amber-800 dark:text-amber-400">
-                You can split bills 1-to-All, 1-to-1, or among Selected flatmates. Before 3 days of the rent date,
-                WhatsApp reminders are automatically primed with Holder UPI ID and payment instructions.
+              <strong className="font-semibold">Sub-Item Bundling &amp; 3-Day Reminders:</strong>
+              <p className="mt-0.5 text-amber-800 dark:text-amber-400 leading-relaxed text-[11px] sm:text-xs">
+                You can add sub-charges (+ table, chair, deposit) directly to any bill. The WhatsApp button calculates
+                the combined total and includes a detailed itemized breakdown for each person.
               </p>
             </div>
           </div>
@@ -213,14 +318,17 @@ export default function RentManagerModal({
             {bills.map((bill) => {
               const status = getRecurringBillStatus(bill);
               const splitCount = bill.splitMemberIds?.length || members.length;
-              const perPerson = bill.amount / splitCount;
+              const subItemsTotal = (bill.subItems || []).reduce((sum, s) => sum + s.amount, 0);
+              const grandBillTotal = bill.amount + subItemsTotal;
               const isEditing = editingBillId === bill.id;
               const isSplitting = splittingBillId === bill.id;
+              const isAddingSub = addingSubItemBillId === bill.id;
+              const isSuccess = splitSuccessBillId === bill.id;
 
               return (
                 <div
                   key={bill.id}
-                  className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 shadow-sm hover:border-indigo-300 transition-colors space-y-4"
+                  className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 shadow-sm hover:border-indigo-300 transition-colors space-y-3.5"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -242,14 +350,29 @@ export default function RentManagerModal({
                             className="px-2 py-1 text-sm font-bold bg-white dark:bg-slate-900 border border-indigo-400 rounded-lg"
                           />
                         ) : (
-                          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                            {bill.title}
+                          <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <span>{bill.title}</span>
+                            {isSuccess && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 animate-in fade-in">
+                                ✓ Split Executed ({splitCount} mates)
+                              </span>
+                            )}
                           </h3>
                         )}
-                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                          <span>Due every {bill.dueDay}th of month</span>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5 flex-wrap">
+                          <span>Due every {bill.dueDay}th</span>
                           <span>•</span>
-                          <span>Split among {splitCount} mates</span>
+                          <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                            Split among {splitCount} mates
+                          </span>
+                          {(bill.subItems?.length || 0) > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                +{bill.subItems?.length} extra sub-items
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -262,7 +385,7 @@ export default function RentManagerModal({
                           <span>
                             {status.daysRemaining === 0
                               ? 'DUE TODAY!'
-                              : `Due in ${status.daysRemaining} days (Reminder Ready)`}
+                              : `Due in ${status.daysRemaining} days`}
                           </span>
                         </span>
                       ) : (
@@ -274,13 +397,13 @@ export default function RentManagerModal({
                     </div>
                   </div>
 
-                  {/* Pricing Details & Holder Edit */}
+                  {/* Pricing Details & Split Trigger Bar */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 gap-3">
                     {isEditing ? (
                       <div className="flex items-center gap-3 flex-wrap w-full">
                         <div>
                           <label className="text-[10px] font-semibold text-slate-400 uppercase">
-                            New Total (₹)
+                            Base Total (₹)
                           </label>
                           <input
                             type="number"
@@ -367,30 +490,39 @@ export default function RentManagerModal({
                       </div>
                     ) : (
                       <div>
-                        <div className="text-xs text-slate-500">Variable Pricing (Holder Controlled):</div>
+                        <div className="text-xs text-slate-500">
+                          {subItemsTotal > 0 ? 'Total Due (Base + Sub-Items):' : 'Amount Due:'}
+                        </div>
                         <div className="flex items-baseline gap-2 mt-0.5">
                           <span className="text-xl font-black text-slate-900 dark:text-white">
-                            {formatINR(bill.amount)}
+                            {formatINR(grandBillTotal)}
                           </span>
-                          <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-                            (₹{perPerson.toFixed(2)} / person • {splitCount} mates)
-                          </span>
+                          {subItemsTotal > 0 ? (
+                            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                              (Base: {formatINR(bill.amount)} + Extra: {formatINR(subItemsTotal)})
+                            </span>
+                          ) : (
+                            <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                              (₹{(bill.amount / splitCount).toFixed(2)} / person)
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       {!isEditing && (
                         <>
                           <button
                             type="button"
                             onClick={() => startEdit(bill)}
                             className="px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg flex items-center gap-1.5"
-                            title="Only Holder can change the price & date"
+                            title="Change Price, Due Date, or Included Mates"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
-                            <span>Change Price / Date</span>
+                            <span>Edit</span>
                           </button>
+
                           {onDeleteBill && (
                             <button
                               type="button"
@@ -412,24 +544,240 @@ export default function RentManagerModal({
                         <button
                           type="button"
                           onClick={() => startSplitBill(bill)}
-                          className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
-                          title="Choose split options and post into Arrears"
+                          className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+                          title="Execute split into flatmate Arrear folders"
                         >
                           <Split className="w-3.5 h-3.5" />
-                          <span>Post into Split</span>
+                          <span>Split</span>
                         </button>
                       )}
                     </div>
                   </div>
 
-                  {/* INLINE SPLIT CONFIGURATOR (1-to-All, 1-to-1, Selected) */}
+                  {/* SUB-ITEMS / BUNDLED CHARGES SECTION (+ Table, Chair, Deposit) */}
+                  <div className="p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Sub-Items &amp; Individual Rentals (Same Due Date)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddSubItem(bill.id)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold text-[11px] border border-indigo-200 dark:border-indigo-800 transition-colors"
+                        title="Add table, chair, deposit, or individual item due on this date"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Add Item / Person / Deposit</span>
+                      </button>
+                    </div>
+
+                    {/* Sub-items List */}
+                    {bill.subItems && bill.subItems.length > 0 ? (
+                      <div className="space-y-1.5 pt-1">
+                        {bill.subItems.map((sub) => {
+                          const subMems = members.filter((m) => sub.memberIds.includes(m.id));
+                          const subPerPerson = sub.amount / (subMems.length || 1);
+
+                          return (
+                            <div
+                              key={sub.id}
+                              className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700/80 text-xs"
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <Tag className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                                  {sub.title}
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  ({formatINR(sub.amount)} •{' '}
+                                  {subMems.map((m) => m.name).join(', ')})
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="font-bold font-mono text-indigo-600 dark:text-indigo-400">
+                                  {formatINR(subPerPerson)} / person
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSubItem(bill, sub.id)}
+                                  className="text-slate-400 hover:text-red-500 p-1"
+                                  title="Remove this sub-item"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic">
+                        No sub-items added. You can add rented table, chair, or deposit shares above.
+                      </p>
+                    )}
+
+                    {/* Add Sub-Item Inline Form */}
+                    {isAddingSub && (
+                      <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border-2 border-indigo-400 dark:border-indigo-600 space-y-3 mt-2 animate-in fade-in">
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-xs font-bold text-slate-900 dark:text-white">
+                            Add Sub-Item to {bill.title}
+                          </h5>
+                          <button
+                            type="button"
+                            onClick={() => setAddingSubItemBillId(null)}
+                            className="text-xs text-slate-400 hover:text-slate-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                              Item Title *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={newSubTitle}
+                              onChange={(e) => setNewSubTitle(e.target.value)}
+                              placeholder="e.g. Table Rental / Chair / Deposit Share"
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                              Amount (₹ INR) *
+                            </label>
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              step="1"
+                              value={newSubAmount}
+                              onChange={(e) => setNewSubAmount(e.target.value)}
+                              placeholder="e.g. 200 or 3000"
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-bold"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Who rented / owes this sub-item? */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block">
+                            Who rented or pays for this item?
+                          </label>
+                          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 dark:bg-slate-900 rounded-lg">
+                            <button
+                              type="button"
+                              onClick={() => setNewSubTarget('single')}
+                              className={`py-1 text-xs font-bold rounded ${
+                                newSubTarget === 'single'
+                                  ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm'
+                                  : 'text-slate-500'
+                              }`}
+                            >
+                              1 Person
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewSubTarget('selected')}
+                              className={`py-1 text-xs font-bold rounded ${
+                                newSubTarget === 'selected'
+                                  ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm'
+                                  : 'text-slate-500'
+                              }`}
+                            >
+                              Selected Mates
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewSubTarget('all')}
+                              className={`py-1 text-xs font-bold rounded ${
+                                newSubTarget === 'all'
+                                  ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm'
+                                  : 'text-slate-500'
+                              }`}
+                            >
+                              All Roommates
+                            </button>
+                          </div>
+
+                          {newSubTarget === 'single' && (
+                            <select
+                              value={newSubSingleMemberId}
+                              onChange={(e) => setNewSubSingleMemberId(e.target.value)}
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg"
+                            >
+                              {members.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name} {m.isHolder ? '(Holder)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
+                          {newSubTarget === 'selected' && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {members.map((m) => {
+                                const isSel = newSubSelectedMemberIds.includes(m.id);
+                                return (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setNewSubSelectedMemberIds((prev) =>
+                                        prev.includes(m.id)
+                                          ? prev.filter((id) => id !== m.id)
+                                          : [...prev, m.id]
+                                      );
+                                    }}
+                                    className={`px-2 py-1 text-xs rounded-lg border flex items-center gap-1 ${
+                                      isSel
+                                        ? 'bg-indigo-600 text-white border-indigo-600'
+                                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                                    }`}
+                                  >
+                                    {isSel && <Check className="w-3 h-3" />}
+                                    <span>{m.name}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setAddingSubItemBillId(null)}
+                            className="px-3 py-1 text-xs text-slate-500"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveSubItem(bill)}
+                            className="px-3.5 py-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg"
+                          >
+                            Save Sub-Item
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* INLINE SPLIT CONFIGURATOR (Opened when clicking "Split") */}
                   {isSplitting && (
                     <div className="p-4 rounded-xl bg-indigo-50/90 dark:bg-indigo-950/60 border-2 border-indigo-500 space-y-3 animate-in fade-in">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Split className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                           <h4 className="font-bold text-xs text-indigo-950 dark:text-indigo-200 uppercase tracking-wide">
-                            Split &ldquo;{bill.title}&rdquo; (₹{bill.amount}) into Arrears
+                            Split &ldquo;{bill.title}&rdquo; into Arrears
                           </h4>
                         </div>
                         <button
@@ -441,7 +789,7 @@ export default function RentManagerModal({
                         </button>
                       </div>
 
-                      {/* 3 Split Modes: 1 to All, 1 to 1, 1 to Selected */}
+                      {/* 3 Split Modes */}
                       <div className="grid grid-cols-3 gap-2 p-1 bg-white/70 dark:bg-slate-900/60 rounded-xl">
                         <button
                           type="button"
@@ -484,17 +832,17 @@ export default function RentManagerModal({
                         </button>
                       </div>
 
-                      {/* Mode View: 1 to All */}
+                      {/* 1 to All View */}
                       {billSplitMode === 'all' && (
                         <div className="text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between p-2.5 rounded-lg bg-white/60 dark:bg-slate-900/40">
-                          <span>Splitting equally among all <strong>{members.length}</strong> roommates:</span>
+                          <span>Splitting base amount equally among all <strong>{members.length}</strong> roommates:</span>
                           <strong className="text-sm font-mono text-indigo-700 dark:text-indigo-300">
-                            ₹{(bill.amount / members.length).toFixed(2)} / person
+                            ₹{(bill.amount / members.length).toFixed(2)} base / person
                           </strong>
                         </div>
                       )}
 
-                      {/* Mode View: 1 to 1 */}
+                      {/* 1 to 1 View */}
                       {billSplitMode === '1to1' && (
                         <div className="p-3 rounded-lg bg-white/60 dark:bg-slate-900/40 space-y-2">
                           <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
@@ -521,14 +869,10 @@ export default function RentManagerModal({
                                 </button>
                               ))}
                           </div>
-                          <div className="text-xs text-slate-600 dark:text-slate-300 pt-1">
-                            Share: <strong>₹{(bill.amount / 2).toFixed(2)}</strong> each between Holder and{' '}
-                            <strong>{members.find((m) => m.id === billOneToOneMateId)?.name}</strong>
-                          </div>
                         </div>
                       )}
 
-                      {/* Mode View: 1 to Selected */}
+                      {/* 1 to Selected View */}
                       {billSplitMode === 'selected' && (
                         <div className="p-3 rounded-lg bg-white/60 dark:bg-slate-900/40 space-y-2">
                           <div className="flex items-center justify-between text-xs">
@@ -577,11 +921,6 @@ export default function RentManagerModal({
                               );
                             })}
                           </div>
-                          {billSelectedMates.length > 0 && (
-                            <div className="text-xs text-slate-600 dark:text-slate-300 pt-1">
-                              Share: <strong>₹{(bill.amount / billSelectedMates.length).toFixed(2)}</strong> each ({billSelectedMates.length} mates)
-                            </div>
-                          )}
                         </div>
                       )}
 
@@ -600,7 +939,7 @@ export default function RentManagerModal({
                           className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-sm flex items-center gap-1.5"
                         >
                           <Check className="w-3.5 h-3.5" />
-                          <span>Confirm &amp; Post Split to Arrears</span>
+                          <span>Confirm &amp; Execute Split</span>
                         </button>
                       </div>
                     </div>
@@ -617,25 +956,30 @@ export default function RentManagerModal({
                       </p>
                       {bill.depositAmount && (
                         <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
-                          Remaining Deposit to give next month: <strong>₹{bill.depositAmount.toLocaleString('en-IN')}</strong> (plus regular rent)
+                          Remaining Deposit: <strong>₹{bill.depositAmount.toLocaleString('en-IN')}</strong>
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* WhatsApp Reminder Dispatch Tray */}
+                  {/* WhatsApp Reminder Dispatch Tray with Exact Line-Item Details */}
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      <span>Dispatch WhatsApp Reminder (with Holder UPI &amp; QR):</span>
+                      <span>Dispatch WhatsApp Reminder (Itemized Total &amp; Holder UPI):</span>
                       <span className="text-[11px] text-slate-400">
-                        1-Click direct message to roommate
+                        1-Click direct message
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {members
-                        .filter((m) => bill.splitMemberIds?.includes(m.id))
+                        .filter((m) => {
+                          const hasBase = bill.splitMemberIds?.includes(m.id);
+                          const hasSub = (bill.subItems || []).some((s) => s.memberIds?.includes(m.id));
+                          return hasBase || hasSub;
+                        })
                         .map((m) => {
+                          const memberShare = calculateMemberBillShare(bill, m.id);
                           const waText = buildRentReminderText({
                             memberName: m.name,
                             holderName: holder.name,
@@ -644,7 +988,8 @@ export default function RentManagerModal({
                             dueDay: bill.dueDay,
                             formattedDueDate: status.formattedDueDate,
                             daysRemaining: status.daysRemaining,
-                            perPersonShare: perPerson,
+                            perPersonShare: memberShare.total,
+                            breakdown: memberShare.breakdown,
                           });
                           const waUrl = generateWhatsAppLink(m.phone, waText);
 
@@ -656,7 +1001,12 @@ export default function RentManagerModal({
                               rel="noopener noreferrer"
                               className="flex items-center justify-between px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 transition-all text-slate-800 dark:text-slate-200 group"
                             >
-                              <span className="truncate">{m.name}</span>
+                              <div className="truncate">
+                                <div className="truncate font-semibold">{m.name}</div>
+                                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-bold">
+                                  {formatINR(memberShare.total)}
+                                </div>
+                              </div>
                               <MessageCircle className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
                             </a>
                           );
@@ -681,7 +1031,7 @@ export default function RentManagerModal({
           ) : (
             <form
               onSubmit={handleCreateNew}
-              className="p-5 rounded-2xl border border-indigo-300 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-4"
+              className="p-4 sm:p-5 rounded-2xl border border-indigo-300 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-4"
             >
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">

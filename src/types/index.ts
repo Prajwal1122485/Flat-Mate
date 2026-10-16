@@ -20,6 +20,14 @@ export type ExpenseCategory =
   | 'Personal'
   | 'Other';
 
+export interface BillSubItem {
+  id: string;
+  title: string;
+  amount: number;
+  memberIds: string[];
+  notes?: string;
+}
+
 export interface RecurringBill {
   id: string;
   title: string;
@@ -27,13 +35,14 @@ export interface RecurringBill {
   dueDay: number; // e.g., 11 for house rent, 15 for washing machine
   category: ExpenseCategory;
   reminderDaysBefore: number; // default: 3
-  splitMemberIds: string[]; // members who share this bill
+  splitMemberIds: string[]; // members who share this base bill
   payerId: string; // usually Holder
   notes?: string;
   depositAmount?: number; // e.g., ₹18,000 remaining deposit to give
   firstMonthAmount?: number; // e.g., ₹1,500 washing machine (includes deposit) or ₹12,000 rent
   regularMonthlyAmount?: number; // e.g., ₹500 next month washing machine, ₹12,000 rent
   lastReminderSentAt?: string;
+  subItems?: BillSubItem[]; // sub-items: furniture, table, chair, deposit share, maintenance
 }
 
 export interface Expense {

@@ -70,6 +70,8 @@ interface HolderPortalProps {
   onDeletePurchaseRequest?: (requestId: string) => void;
   onUpdateMember?: (updated: Member) => void;
   onClearAllTransactions?: () => void;
+  onResetToCompletelyBlank?: () => void;
+  firebaseStatus?: 'connected' | 'connecting' | 'error' | 'unconfigured';
 }
 
 export default function HolderPortal({
@@ -97,6 +99,8 @@ export default function HolderPortal({
   onDeletePurchaseRequest,
   onUpdateMember,
   onClearAllTransactions,
+  onResetToCompletelyBlank,
+  firebaseStatus = 'connected',
 }: HolderPortalProps) {
   const [activeTab, setActiveTab] = useState<'mates' | 'expenses' | 'arrears' | 'completed' | 'requests' | 'matrix' | 'security'>('mates');
   const [arrearFilter, setArrearFilter] = useState<'all' | 'owedToMe' | 'owedByMe' | string>('all');
@@ -325,19 +329,25 @@ export default function HolderPortal({
           </p>
         </div>
 
-        {/* Rent Schedule (11th of Month) */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+        {/* Rent Schedule */}
+        <div
+          onClick={onOpenRentManager}
+          className="p-5 rounded-2xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 cursor-pointer hover:border-amber-400/50 transition-colors"
+          title="Click to manage rents & recurring bills"
+        >
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-            <span>House Rent on 11th</span>
+            <span>{rentBill ? rentBill.title : 'Recurring Rent'}</span>
             <Calendar className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-            {rentBill ? formatINR(rentBill.amount) : '₹30,000'}
+            {rentBill ? formatINR(rentBill.amount) : 'Not Configured'}
           </div>
           <div className="text-xs font-medium text-amber-600 dark:text-amber-400">
-            {rentStatus?.isWithinReminderWindow
-              ? `🔔 Due in ${rentStatus.daysRemaining} days (Reminders Active)`
-              : `Scheduled for ${rentStatus?.formattedDueDate || '11th of month'}`}
+            {rentBill && rentStatus
+              ? rentStatus.isWithinReminderWindow
+                ? `🔔 Due in ${rentStatus.daysRemaining} days (Reminders Active)`
+                : `Scheduled for ${rentStatus.formattedDueDate}`
+              : 'Click to configure rent & due date'}
           </div>
         </div>
       </div>
@@ -561,6 +571,28 @@ export default function HolderPortal({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {members.length === 1 && (
+              <div
+                onClick={onOpenAddMember}
+                className="p-6 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-indigo-50/80 transition-all space-y-2 min-h-[180px]"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                  <UserPlus className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Add Roommates
+                </h4>
+                <p className="text-xs text-slate-500 max-w-xs">
+                  Your register is clean &amp; blank. Click here to add your flatmates with their names, phone numbers, and PINs.
+                </p>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold"
+                >
+                  + Add First Roommate
+                </button>
+              </div>
+            )}
             {members.map((member) => {
               const memShares = shares.filter((s) => s.debtorId === member.id);
               const pendingSum = memShares
@@ -1475,6 +1507,26 @@ export default function HolderPortal({
             </p>
           </div>
 
+          {/* Firebase Real-Time Cloud Status Card */}
+          <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg">
+                🔥
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Firebase Cloud Database</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold">
+                    Connected &amp; Live
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Project: <code className="text-indigo-400 font-mono">flatmate-register</code> &bull; All entries and roommate modifications sync instantly across all flatmates&apos; devices.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Clean Slate / Start Fresh Empty Register */}
           {onClearAllTransactions && (
             <div className="p-5 rounded-2xl border border-red-200 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/20 space-y-3">
@@ -1491,7 +1543,7 @@ export default function HolderPortal({
                   </p>
                 </div>
               </div>
-              <div className="pt-2">
+              <div className="pt-2 flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => {
@@ -1508,6 +1560,25 @@ export default function HolderPortal({
                 >
                   Clear All Transactions (Fresh Register)
                 </button>
+
+                {onResetToCompletelyBlank && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          'Wipe EVERYTHING back to a pure blank state with only Prajwal (Holder)? This will clear all added roommates, expenses, and bills from both your browser and the Firebase Cloud database.'
+                        )
+                      ) {
+                        onResetToCompletelyBlank();
+                        alert('Database has been completely wiped to a pure blank slate.');
+                      }
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-red-600 dark:text-red-300 bg-red-100 dark:bg-red-950/60 hover:bg-red-200 dark:hover:bg-red-900/60 rounded-xl border border-red-300 dark:border-red-800 transition-all active:scale-95"
+                  >
+                    Wipe Database to Pure Blank (Holder Only)
+                  </button>
+                )}
               </div>
             </div>
           )}

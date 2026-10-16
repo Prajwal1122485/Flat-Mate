@@ -1008,204 +1008,91 @@ export default function MemberPortal({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Flat Rent Card */}
-            <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-800 shadow-md space-y-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                    Due Every 11th of Month
-                  </span>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1">
-                    House Rent &bull; Flat 304
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Paid by {holder.name} (Holder) &bull; Split among all active mates
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                    ₹12,000
-                  </div>
-                  <div className="text-[10px] text-slate-400">Monthly House Rent</div>
-                </div>
-              </div>
-
-              {/* Deposit Logistics Explanation */}
-              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs space-y-1.5">
-                <div className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Deposit &amp; Next Month Logistics</span>
-                </div>
-                <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
-                  Total deposit is <strong>₹30,000</strong>. Month 1 given: <strong>₹12,000</strong>.
-                  The remaining deposit <strong>₹18,000</strong> + next month regular rent <strong>₹12,000</strong> = total <strong>₹30,000</strong> will be due next month on the 11th. Regular rent from Month 2 onwards is ₹12,000/month.
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-500">Your Regular Share:</div>
-                  <div className="text-base font-black text-slate-900 dark:text-white">
-                    {formatINR(12000 / (allMembers.length || 1))} / mate
-                  </div>
-                </div>
-
-                {/* Self-contained actions inside Rent */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <a
-                    href={`upi://pay?pa=${holder.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(12000 / (allMembers.length || 1))}&cu=INR&tn=Flat%20Rent`}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
-                  >
-                    <span>Pay UPI</span>
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowHolderQrForRent(true)}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
-                  >
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>Show QR</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRequestingExtensionBill({
-                        id: 'rec_rent',
-                        title: 'House Rent • Flat 304',
-                        amount: 12000,
-                        dueDay: 11,
-                        category: 'Rent',
-                        splitMemberIds: allMembers.map((m) => m.id),
-                        reminderDaysBefore: 3,
-                        payerId: holder.id,
-                      });
-                    }}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 rounded-xl transition-colors"
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Ask Time</span>
-                  </button>
-                </div>
-              </div>
+          {recurringBills.length === 0 ? (
+            <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">
+              <Calendar className="w-8 h-8 text-slate-400 mx-auto" />
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                No recurring rents or bills scheduled yet.
+              </p>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                When Holder {holder.name} configures house rent or appliance rental bills, they will appear here with automated reminders and UPI payment options.
+              </p>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {recurringBills.map((bill) => {
+                const splitCount = bill.splitMemberIds?.length || allMembers.length || 1;
+                const myShare = bill.amount / splitCount;
 
-            {/* Washing Machine & Appliances Card */}
-            <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-cyan-200 dark:border-cyan-800 shadow-md space-y-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300">
-                    Due Every 15th of Month
-                  </span>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1">
-                    Washing Machine &amp; Appliances
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Managed by {holder.name} &bull; Rental schedule
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">
-                    ₹500
-                  </div>
-                  <div className="text-[10px] text-slate-400">Monthly (from Month 2)</div>
-                </div>
-              </div>
-
-              {/* Deposit Logistics Explanation */}
-              <div className="p-3.5 rounded-2xl bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800 text-xs space-y-1.5">
-                <div className="font-bold text-cyan-900 dark:text-cyan-200 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-cyan-600 shrink-0" />
-                  <span>Washing Machine Deposit Policy</span>
-                </div>
-                <p className="text-cyan-800 dark:text-cyan-300 leading-relaxed">
-                  First month was <strong>₹1,500</strong> (including refundable appliance security deposit). From Month 2 onwards, regular monthly rent is <strong>₹500/month</strong> due on the 15th.
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-500">Your Share:</div>
-                  <div className="text-base font-black text-slate-900 dark:text-white">
-                    {formatINR(500 / (allMembers.length || 1))} / mate
-                  </div>
-                </div>
-
-                {/* Self-contained actions inside Rent */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <a
-                    href={`upi://pay?pa=${holder.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(500 / (allMembers.length || 1))}&cu=INR&tn=Washing%20Machine%20Rent`}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
+                return (
+                  <div
+                    key={bill.id}
+                    className="p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-800 shadow-md space-y-4"
                   >
-                    <span>Pay UPI</span>
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowHolderQrForRent(true)}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
-                  >
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>Show QR</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRequestingExtensionBill({
-                        id: 'rec_appliances',
-                        title: 'Washing Machine & Appliances',
-                        amount: 500,
-                        dueDay: 15,
-                        category: 'Appliance Rental',
-                        splitMemberIds: allMembers.map((m) => m.id),
-                        reminderDaysBefore: 3,
-                        payerId: holder.id,
-                      });
-                    }}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 rounded-xl transition-colors"
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Ask Time</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Other Recurring House Bills */}
-          {recurringBills.filter((b) => b.id !== 'rec_rent' && b.id !== 'rec_appliances').length > 0 && (
-            <div className="space-y-3 pt-4">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Other House Bills
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {recurringBills
-                  .filter((b) => b.id !== 'rec_rent' && b.id !== 'rec_appliances')
-                  .map((bill) => (
-                    <div
-                      key={bill.id}
-                      className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-sm space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">
-                          Due on {bill.dueDay}th
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                          Due Every {bill.dueDay}th of Month
                         </span>
-                        <span className="text-base font-black text-slate-900 dark:text-white">
-                          {formatINR(bill.amount)}
-                        </span>
+                        <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1">
+                          {bill.title}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Category: {bill.category} &bull; Split among {splitCount} mates
+                        </p>
                       </div>
-                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-                        {bill.title}
-                      </h4>
-                      <p className="text-xs text-slate-500">
-                        Split among {bill.splitMemberIds.length} mates ({formatINR(bill.amount / (bill.splitMemberIds.length || 1))} each)
-                      </p>
+                      <div className="text-right">
+                        <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                          {formatINR(bill.amount)}
+                        </div>
+                        <div className="text-[10px] text-slate-400">Total Monthly Bill</div>
+                      </div>
                     </div>
-                  ))}
-              </div>
+
+                    {bill.notes && (
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 italic">
+                        {bill.notes}
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-slate-500">Your Share:</div>
+                        <div className="text-base font-black text-slate-900 dark:text-white">
+                          {formatINR(myShare)} / mate
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <a
+                          href={`upi://pay?pa=${holder.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(myShare)}&cu=INR&tn=${encodeURIComponent(bill.title)}`}
+                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
+                        >
+                          <span>Pay UPI</span>
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowHolderQrForRent(true)}
+                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>Show QR</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setRequestingExtensionBill(bill)}
+                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 rounded-xl transition-colors"
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>Ask Time</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

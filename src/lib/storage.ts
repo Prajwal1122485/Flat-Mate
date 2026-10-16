@@ -30,115 +30,23 @@ export interface AppState {
   lastUpdated: string;
 }
 
-const STORAGE_KEY = 'FLATMATE_REGISTER_DATA_V5_CLEAN';
+const STORAGE_KEY = 'FLATMATE_REGISTER_DATA_V7_PURE_BLANK';
 
-// Flat Members Directory (User can edit names/passwords/details freely)
+// Completely blank initial slate - only Prajwal (Holder). Roommates added by user.
 export const DEFAULT_MEMBERS: Member[] = [
   {
     id: 'mem_prajwal',
     name: 'Prajwal',
-    phone: '9876543210',
-    upiId: 'prajwal@upi',
+    phone: '',
+    upiId: '',
     isHolder: true,
     avatarBg: 'bg-indigo-600',
     passcode: '1234',
     monthlyBudget: undefined,
   },
-  {
-    id: 'mem_rohan',
-    name: 'Rohan',
-    phone: '9845012345',
-    upiId: 'rohan.kumar@okhdfcbank',
-    isHolder: false,
-    avatarBg: 'bg-emerald-600',
-    passcode: '0000',
-    monthlyBudget: undefined,
-  },
-  {
-    id: 'mem_amit',
-    name: 'Amit',
-    phone: '9988776655',
-    upiId: 'amit.verma@paytm',
-    isHolder: false,
-    avatarBg: 'bg-amber-600',
-    passcode: '0000',
-    monthlyBudget: undefined,
-  },
-  {
-    id: 'mem_suresh',
-    name: 'Suresh',
-    phone: '9123456780',
-    upiId: 'suresh@upi',
-    isHolder: false,
-    avatarBg: 'bg-sky-600',
-    passcode: '0000',
-    monthlyBudget: undefined,
-  },
-  {
-    id: 'mem_kiran',
-    name: 'Kiran',
-    phone: '9443322110',
-    upiId: 'kiran@upi',
-    isHolder: false,
-    avatarBg: 'bg-purple-600',
-    passcode: '0000',
-    monthlyBudget: undefined,
-  },
-  {
-    id: 'mem_vikram',
-    name: 'Vikram',
-    phone: '9556677889',
-    upiId: 'vikram@upi',
-    isHolder: false,
-    avatarBg: 'bg-rose-600',
-    passcode: '0000',
-    monthlyBudget: undefined,
-  },
 ];
 
-export const DEFAULT_RECURRING_BILLS: RecurringBill[] = [
-  {
-    id: 'rec_rent',
-    title: 'House Rent &bull; Flat 304',
-    amount: 12000, // Due on 11th
-    dueDay: 11,
-    category: 'Rent',
-    reminderDaysBefore: 3,
-    firstMonthAmount: 12000, // Month 1 given ₹12,000 towards deposit/rent
-    depositAmount: 18000, // Remaining ₹18,000 deposit to be paid next month
-    regularMonthlyAmount: 12000, // Regular monthly rent
-    splitMemberIds: [
-      'mem_prajwal',
-      'mem_rohan',
-      'mem_amit',
-      'mem_suresh',
-      'mem_kiran',
-      'mem_vikram',
-    ],
-    payerId: 'mem_prajwal',
-    notes: 'Total deposit ₹30,000 (Given ₹12,000 now, remaining ₹18,000 deposit + ₹12,000 rent due next month on 11th)',
-  },
-  {
-    id: 'rec_appliances',
-    title: 'Washing Machine Rent',
-    amount: 500, // Due on 15th
-    dueDay: 15,
-    category: 'Appliance Rental',
-    reminderDaysBefore: 3,
-    firstMonthAmount: 1500, // 1st month ₹1500 (deposit included)
-    regularMonthlyAmount: 500, // Regular monthly rent
-    splitMemberIds: [
-      'mem_prajwal',
-      'mem_rohan',
-      'mem_amit',
-      'mem_suresh',
-      'mem_kiran',
-      'mem_vikram',
-    ],
-    payerId: 'mem_prajwal',
-    notes: 'First month ₹1500 (Deposit included). From next month onwards ₹500/month.',
-  },
-];
+export const DEFAULT_RECURRING_BILLS: RecurringBill[] = [];
 
 // Clean 100% empty initial records ready for user choice
 export const DEFAULT_EXPENSES: Expense[] = [];
@@ -148,61 +56,8 @@ export const DEFAULT_NOTIFICATIONS: HolderNotification[] = [];
 export const DEFAULT_PERSONAL_EXPENSES: PersonalExpense[] = [];
 export const DEFAULT_PANTRY_ITEMS: PantryItem[] = [];
 export const DEFAULT_CHORES: FlatChore[] = [];
-
-export const DEFAULT_CONTACTS: FlatContact[] = [
-  {
-    id: 'cont_1',
-    role: 'Flat Owner / Landlord',
-    name: 'Mr. Ramesh Sharma',
-    phone: '9820011223',
-    notes: 'For lease agreement, rent receipt on 11th',
-  },
-  {
-    id: 'cont_2',
-    role: 'Building Caretaker & Supervisor',
-    name: 'Suresh Gowda',
-    phone: '9845099881',
-    notes: 'Water tanker supply, basement parking & common repairs',
-  },
-  {
-    id: 'cont_3',
-    role: 'Sanitary Plumber',
-    name: 'Manjunath',
-    phone: '9900223344',
-    notes: 'Bathroom geyser, kitchen pipe clogging',
-  },
-  {
-    id: 'cont_4',
-    role: 'Licensed Electrician',
-    name: 'Ravi Kumar',
-    phone: '9731144556',
-    notes: 'MCB switches, wiring, inverter backup issues',
-  },
-  {
-    id: 'cont_5',
-    role: 'Cook & Housekeeping',
-    name: 'Sunita Didi',
-    phone: '9611223377',
-    notes: 'Morning: 7:30 AM | Evening: 7:00 PM',
-  },
-  {
-    id: 'cont_6',
-    role: 'Apartment Security Main Gate',
-    name: 'Main Gate Intercom',
-    phone: '080-41234567',
-    notes: 'Guest entry authorization & courier parcels',
-  },
-];
-
-export const DEFAULT_NOTICES: FlatNotice[] = [
-  {
-    id: 'notice_1',
-    title: 'Doorstep Waste Collection Timing',
-    content: 'BBMP collection staff arrives daily at 8:45 AM. Segregate wet and dry waste into separate bins outside door.',
-    isImportant: false,
-    createdAt: new Date().toISOString(),
-  },
-];
+export const DEFAULT_CONTACTS: FlatContact[] = [];
+export const DEFAULT_NOTICES: FlatNotice[] = [];
 
 export function getInitialAppState(): AppState {
   return {
@@ -269,6 +124,15 @@ export function resetAppState(): AppState {
   const initial = getInitialAppState();
   saveAppState(initial);
   return initial;
+}
+
+/**
+ * Wipes everything back to a completely blank slate with only Prajwal (Holder).
+ */
+export function resetToCompletelyBlank(): AppState {
+  const blankState = getInitialAppState();
+  saveAppState(blankState);
+  return blankState;
 }
 
 /**

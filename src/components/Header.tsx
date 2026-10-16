@@ -14,7 +14,7 @@ import { Member, HolderNotification } from '@/types';
 interface HeaderProps {
   currentMember: Member;
   allMembers: Member[];
-  onSelectMember: (member: Member) => void;
+  onSelectMember?: (member: Member) => void;
   onOpenHolderPortal: () => void;
   onExitPortal: () => void;
   activePortalType?: 'holder' | 'member' | 'gatekeeper';
@@ -23,12 +23,13 @@ interface HeaderProps {
   onExportBackup: () => void;
   onImportBackup: (file: File) => void;
   onResetData: () => void;
+  firebaseStatus?: 'connected' | 'connecting' | 'error' | 'unconfigured';
+  onResetToCompletelyBlank?: () => void;
 }
 
 export default function Header({
   currentMember,
   allMembers,
-  onSelectMember,
   onOpenHolderPortal,
   onExitPortal,
   activePortalType = 'gatekeeper',
@@ -37,6 +38,8 @@ export default function Header({
   onExportBackup,
   onImportBackup,
   onResetData,
+  firebaseStatus = 'connected',
+  onResetToCompletelyBlank,
 }: HeaderProps) {
   const [showNotifDrawer, setShowNotifDrawer] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -80,6 +83,41 @@ export default function Header({
 
         {/* Action Controls & Top Holder Portal Access */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Live Firebase Database Connection Indicator */}
+          <div
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+              firebaseStatus === 'connected'
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                : firebaseStatus === 'connecting'
+                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300 dark:border-rose-700'
+            }`}
+            title={
+              firebaseStatus === 'connected'
+                ? 'Firebase Firestore connected & syncing in real time (flatmate-register)'
+                : firebaseStatus === 'connecting'
+                ? 'Connecting to Firebase Firestore...'
+                : 'Firebase is currently offline or unconfigured. Local storage active.'
+            }
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                firebaseStatus === 'connected'
+                  ? 'bg-emerald-500 animate-pulse'
+                  : firebaseStatus === 'connecting'
+                  ? 'bg-amber-500 animate-ping'
+                  : 'bg-rose-500'
+              }`}
+            />
+            <span className="hidden xs:inline">
+              {firebaseStatus === 'connected'
+                ? 'Firebase Live'
+                : firebaseStatus === 'connecting'
+                ? 'Connecting DB...'
+                : 'Offline DB'}
+            </span>
+          </div>
+
           {/* Top Prominent Holder Access Button */}
           <button
             type="button"
@@ -239,17 +277,21 @@ export default function Header({
                   onClick={() => {
                     if (
                       confirm(
-                        'Reset all data back to the default flatmate seed state?'
+                        'Wipe everything to a completely blank slate with only Prajwal (Holder)? This resets both your local state and the Firebase Cloud database.'
                       )
                     ) {
-                      onResetData();
+                      if (onResetToCompletelyBlank) {
+                        onResetToCompletelyBlank();
+                      } else {
+                        onResetData();
+                      }
                       setShowMoreMenu(false);
                     }
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-left font-medium"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-left font-bold"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  <span>Reset Demo Data</span>
+                  <span>Wipe to Completely Blank</span>
                 </button>
               </div>
             )}

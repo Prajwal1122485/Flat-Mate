@@ -33,17 +33,24 @@ import {
   loadAppState,
   saveAppState,
   resetAppState,
+  resetToCompletelyBlank,
   clearAllTransactionsToEmpty,
   exportBackupJSON,
   importBackupJSON,
 } from '@/lib/storage';
-import { subscribeToFirebaseSync, pushStateToFirebase } from '@/lib/firebaseSync';
+import {
+  subscribeToFirebaseSync,
+  pushStateToFirebase,
+  wipeFirestoreToBlank,
+  FirebaseSyncStatus,
+} from '@/lib/firebaseSync';
 import { calculateExactSplit } from '@/lib/calculations';
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState | null>(null);
   const [activePortalType, setActivePortalType] = useState<'holder' | 'member' | 'gatekeeper'>('gatekeeper');
   const [currentMemberId, setCurrentMemberId] = useState<string>('');
+  const [firebaseStatus, setFirebaseStatus] = useState<FirebaseSyncStatus>('connecting');
 
   // Holder Security & 10-Second Grace Relock State
   const [holderUnlocked, setHolderUnlocked] = useState(false);
@@ -75,9 +82,15 @@ export default function Home() {
     setCurrentMemberId(holder.id);
 
     // Live sync with Firebase Firestore if credentials are provided
-    const unsubscribeFirebase = subscribeToFirebaseSync('flat_304', (remoteState) => {
-      setAppState(remoteState);
-    });
+    const unsubscribeFirebase = subscribeToFirebaseSync(
+      'flat_304',
+      (remoteState) => {
+        setAppState(remoteState);
+      },
+      (status) => {
+        setFirebaseStatus(status);
+      }
+    );
 
     // Cross-tab synchronization
     const handleStorageUpdate = () => {
@@ -702,6 +715,13 @@ export default function Home() {
     updateState((prev) => clearAllTransactionsToEmpty(prev));
   };
 
+  // Wipes all data to completely blank slate with only Prajwal in both LocalStorage & Firebase Cloud
+  const handleResetToCompletelyBlank = async () => {
+    const blank = await wipeFirestoreToBlank('flat_304');
+    setAppState(blank);
+    setActivePortalType('gatekeeper');
+  };
+
   // Personal Expenses (Private Diary)
   const handleSavePersonalExpense = (
     expData: Omit<PersonalExpense, 'id' | 'createdAt'>
@@ -828,6 +848,8 @@ export default function Home() {
           setAppState(fresh);
           setActivePortalType('gatekeeper');
         }}
+        firebaseStatus={firebaseStatus}
+        onResetToCompletelyBlank={handleResetToCompletelyBlank}
       />
 
       {/* Main Body */}
@@ -873,6 +895,8 @@ export default function Home() {
             onDeletePurchaseRequest={handleDeletePurchaseRequest}
             onUpdateMember={handleUpdateMember}
             onClearAllTransactions={handleClearAllTransactions}
+            onResetToCompletelyBlank={handleResetToCompletelyBlank}
+            firebaseStatus={firebaseStatus}
           />
         )}
 

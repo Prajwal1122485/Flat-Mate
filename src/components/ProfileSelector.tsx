@@ -213,10 +213,16 @@ export default function ProfileSelector({
               </div>
 
               <div>
-                <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[11px] font-semibold border border-slate-700 mb-1">
-                  <span>Flat 304</span>
-                  <span>&bull;</span>
-                  <span>Expense Register &amp; Splitter</span>
+                <div className="flex items-center justify-center gap-2 flex-wrap mb-1">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[11px] font-semibold border border-slate-700">
+                    <span>Flat-Mate</span>
+                    <span>&bull;</span>
+                    <span>Expense Register</span>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Firebase Live</span>
+                  </div>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                   Flat-Mate
@@ -229,7 +235,7 @@ export default function ProfileSelector({
 
             {/* Login Form */}
             <form onSubmit={handleLoginSubmit} className="space-y-4">
-              {/* Profile Selector (Holder, Prajwal, Rohan, Amit, etc.) */}
+              {/* Profile Selector */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Select Profile</span>
@@ -248,21 +254,29 @@ export default function ProfileSelector({
                     }}
                     className="w-full px-4 py-3 rounded-2xl bg-slate-800 border border-slate-700 text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none cursor-pointer"
                   >
-                    {/* Clean "Holder" Option */}
-                    <option value="holder">Holder</option>
+                    {/* Clean Holder Option */}
+                    <option value="holder">Holder ({holder.name})</option>
 
-                    {/* Clean Member Names: No "Mate 1:", No "(Personal View)" */}
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
+                    {/* Roommates added by user */}
+                    {members
+                      .filter((m) => !m.isHolder)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
                   </select>
 
                   <div className="absolute right-4 top-3.5 pointer-events-none text-slate-400 text-xs">
                     ▼
                   </div>
                 </div>
+
+                {members.filter((m) => !m.isHolder).length === 0 && (
+                  <p className="text-[11px] text-indigo-300/80 mt-1.5">
+                    No roommates added yet. Log in as Holder to add roommates and split expenses.
+                  </p>
+                )}
               </div>
 
               {/* Active Profile Info */}

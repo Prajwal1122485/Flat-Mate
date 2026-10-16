@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CreditCard,
   QrCode,
@@ -42,7 +42,15 @@ import {
   FlatContact,
   FlatNotice,
 } from '@/types';
-import { formatINR } from '@/lib/calculations';
+import QRCodeDisplay from './QRCodeDisplay';
+import {
+  formatINR,
+  calculateMemberBillShare,
+  getRecurringBillStatus,
+  buildRentReminderText,
+  generateWhatsAppLink,
+  cleanPhoneNumber,
+} from '@/lib/calculations';
 import {
   generateMemberExpensePDF,
   generatePurchasedItemsPDF,
@@ -80,6 +88,15 @@ interface MemberPortalProps {
   onRevertShare?: (shareId: string) => void;
   onOpenHolderPortal?: () => void;
   onUpdateMember?: (updated: Member) => void;
+  onSubmitPaymentClaim?: (claim: {
+    fromMemberId: string;
+    toMemberId: string;
+    amount: number;
+    note?: string;
+    shareIds?: string[];
+  }) => void;
+  deepLinkPayAction?: { billId?: string; amount?: number } | null;
+  onClearDeepLinkPayAction?: () => void;
 }
 
 export default function MemberPortal({
@@ -113,6 +130,9 @@ export default function MemberPortal({
   onRevertShare,
   onOpenHolderPortal,
   onUpdateMember,
+  onSubmitPaymentClaim,
+  deepLinkPayAction,
+  onClearDeepLinkPayAction,
 }: MemberPortalProps) {
   // 10 Tabs matching exact user requirements
   const [activeTab, setActiveTab] = useState<
@@ -164,10 +184,169 @@ export default function MemberPortal({
 
   // QR Code viewing modal inside Rent
   const [showHolderQrForRent, setShowHolderQrForRent] = useState(false);
+  const [selectedQrBill, setSelectedQrBill] = useState<{
+    bill: RecurringBill;
+    shareAmount: number;
+    breakdown: { title: string; amount: number }[];
+  } | null>(null);
+
+  // Automated UPI Payment Return & Tracking
+  const [pendingUpiSession, setPendingUpiSession] = useState<{
+    billId?: string;
+    billTitle: string;
+    amount: number;
+    fromMemberId: string;
+    fromMemberName: string;
+    toMemberId: string;
+    toMemberName: string;
+    toUpiId?: string;
+    toPhone?: string;
+    timestamp: number;
+    breakdownStr?: string;
+  } | null>(null);
+  const [showUpiReturnConfirmModal, setShowUpiReturnConfirmModal] = useState(false);
+  const [directPayModalBill, setDirectPayModalBill] = useState<RecurringBill | null>(null);
+  const [paymentClaimToast, setPaymentClaimToast] = useState<string | null>(null);
+
+  // Deep link routing effect
+  useEffect(() => {
+    if (deepLinkPayAction?.billId) {
+      const b = recurringBills.find((bill) => bill.id === deepLinkPayAction.billId);
+      if (b) {
+        setActiveTab('rent');
+        setDirectPayModalBill(b);
+      }
+    }
+  }, [deepLinkPayAction, recurringBills]);
+
+  // Handle initiating UPI payment to track when returning from GPay/PhonePe/Paytm
+  const handleInitiateUpiPayment = (params: {
+    billId?: string;
+    billTitle: string;
+    amount: number;
+    recipient: Member;
+    breakdownStr?: string;
+  }) => {
+    const session = {
+      billId: params.billId,
+      billTitle: params.billTitle,
+      amount: params.amount,
+      fromMemberId: currentMember.id,
+      fromMemberName: currentMember.name,
+      toMemberId: params.recipient.id,
+      toMemberName: params.recipient.name,
+      toUpiId: params.recipient.upiId,
+      toPhone: params.recipient.phone,
+      timestamp: Date.now(),
+      breakdownStr: params.breakdownStr,
+    };
+    try {
+      localStorage.setItem('flatmate_pending_upi_session', JSON.stringify(session));
+    } catch (e) {
+      console.error('Storage error', e);
+    }
+    setPendingUpiSession(session);
+  };
+
+  // Automatic detection when roommate switches back to FlatMate after paying in UPI app
+  useEffect(() => {
+    const checkUpiReturn = () => {
+      try {
+        const stored = localStorage.getItem('flatmate_pending_upi_session');
+        if (!stored) return;
+        const session = JSON.parse(stored);
+        if (
+          session &&
+          session.fromMemberId === currentMember.id &&
+          Date.now() - session.timestamp < 15 * 60 * 1000
+        ) {
+          setPendingUpiSession(session);
+          setShowUpiReturnConfirmModal(true);
+        }
+      } catch (err) {
+        console.error('Error checking UPI return session', err);
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkUpiReturn();
+      }
+    };
+
+    window.addEventListener('focus', checkUpiReturn);
+    document.addEventListener('visibilitychange', handleVisibility);
+    checkUpiReturn();
+
+    return () => {
+      window.removeEventListener('focus', checkUpiReturn);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [currentMember.id]);
+
+  // 1-Click Auto Confirm Paid upon return from online app
+  const handleConfirmUpiPaid = () => {
+    if (!pendingUpiSession) return;
+    if (onSubmitPaymentClaim) {
+      onSubmitPaymentClaim({
+        fromMemberId: pendingUpiSession.fromMemberId,
+        toMemberId: pendingUpiSession.toMemberId,
+        amount: pendingUpiSession.amount,
+        note: `Automated UPI payment for ${pendingUpiSession.billTitle} (${pendingUpiSession.breakdownStr || formatINR(pendingUpiSession.amount)})`,
+      });
+    }
+
+    const waMsg = `Hi ${pendingUpiSession.toMemberName}! 👋\n\nI have just completed the payment of *${formatINR(pendingUpiSession.amount)}* for *${pendingUpiSession.billTitle}* via UPI.\n${pendingUpiSession.breakdownStr ? `📋 Breakdown: ${pendingUpiSession.breakdownStr}\n` : ''}✅ Direct Payment Claim has been recorded in Flat-Mate App. Please verify! Thank you 🙌`;
+    const waUrl = generateWhatsAppLink(pendingUpiSession.toPhone || '', waMsg);
+
+    try {
+      localStorage.removeItem('flatmate_pending_upi_session');
+    } catch (e) {}
+
+    setShowUpiReturnConfirmModal(false);
+    setDirectPayModalBill(null);
+    setPendingUpiSession(null);
+    if (onClearDeepLinkPayAction) onClearDeepLinkPayAction();
+
+    setPaymentClaimToast(`Payment claim for ${formatINR(pendingUpiSession.amount)} submitted! Opening WhatsApp receipt...`);
+    setTimeout(() => setPaymentClaimToast(null), 5000);
+
+    if (typeof window !== 'undefined') {
+      window.open(waUrl, '_blank');
+    }
+  };
+
+  const handleDismissUpiReturn = () => {
+    try {
+      localStorage.removeItem('flatmate_pending_upi_session');
+    } catch (e) {}
+    setShowUpiReturnConfirmModal(false);
+    setPendingUpiSession(null);
+  };
 
   const holder = allMembers.find((m) => m.isHolder) || allMembers[0];
   const memberMap = useMemo(() => new Map(allMembers.map((m) => [m.id, m])), [allMembers]);
   const expenseMap = useMemo(() => new Map(expenses.map((e) => [e.id, e])), [expenses]);
+
+  // Auto-transfer 3-day upcoming rent / bills into Arrear folder for this member
+  const upcomingDueBillsForMe = useMemo(() => {
+    if (currentMember.id === holder.id) return [];
+    return recurringBills
+      .map((bill) => {
+        const status = getRecurringBillStatus(bill);
+        const shareData = calculateMemberBillShare(bill, currentMember.id);
+        return {
+          bill,
+          status,
+          shareData,
+        };
+      })
+      .filter((item) => item.status.daysRemaining <= 3 && item.shareData.total > 0);
+  }, [recurringBills, currentMember.id, holder.id]);
+
+  const upcomingBillsTotal = useMemo(() => {
+    return upcomingDueBillsForMe.reduce((sum, item) => sum + item.shareData.total, 0);
+  }, [upcomingDueBillsForMe]);
 
   // 1. Personal shares of shared expenses
   const myShares = useMemo(() => {
@@ -743,14 +922,19 @@ export default function MemberPortal({
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
                 <span>Arrear (To Whom I Have to Give)</span>
                 <span className="px-2.5 py-0.5 text-xs font-black bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 rounded-full">
-                  Total: {formatINR(totalPendingToPay)}
+                  Total: {formatINR(totalPendingToPay + upcomingBillsTotal)}
                 </span>
+                {upcomingBillsTotal > 0 && (
+                  <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                    (includes {formatINR(upcomingBillsTotal)} 3-day upcoming rent)
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-slate-500">
-                All house expenses where you have pending shares to pay. Pay directly via UPI or QR code.
+                All house expenses &amp; 3-day upcoming rents transferred here to remind you. Pay directly via UPI or QR code.
               </p>
             </div>
 
@@ -763,6 +947,145 @@ export default function MemberPortal({
               <span>Pay to Mates via QR / UPI</span>
             </button>
           </div>
+
+          {/* AUTO-TRANSFERRED UPCOMING 3-DAY RENT & EXPENSES REMINDER SECTION */}
+          {upcomingDueBillsForMe.length > 0 && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-amber-500/15 via-red-500/10 to-indigo-500/15 border-2 border-amber-500/50 shadow-lg space-y-4 animate-in fade-in">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-base shadow-sm shrink-0">
+                    ⏰
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-amber-950 dark:text-amber-100 uppercase tracking-wide flex items-center gap-2">
+                      <span>Transferred to Arrear: Upcoming Due in 3 Days</span>
+                      <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-500 text-slate-950">
+                        {upcomingDueBillsForMe.length} Bill{upcomingDueBillsForMe.length > 1 ? 's' : ''}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-amber-900/80 dark:text-amber-300/80">
+                      High-priority notice transferred directly to your Arrear folder to remind you before the due date.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {upcomingDueBillsForMe.map(({ bill, status, shareData }) => {
+                  const formulaStr =
+                    shareData.breakdown.length > 1
+                      ? `(${shareData.breakdown.map((i) => formatINR(i.amount)).join(' + ')})`
+                      : formatINR(shareData.total);
+
+                  return (
+                    <div
+                      key={bill.id}
+                      className="p-4 rounded-2xl bg-white dark:bg-slate-900 border-2 border-amber-400/90 dark:border-amber-600 shadow-md space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">
+                              {status.daysRemaining === 0
+                                ? '🚨 DUE TODAY!'
+                                : `⏰ Due in ${status.daysRemaining} day(s) • ${status.formattedDueDate}`}
+                            </span>
+                            <h4 className="text-base font-black text-slate-900 dark:text-white mt-1">
+                              {bill.title}
+                            </h4>
+                            <p className="text-[11px] text-slate-500">
+                              Payable to Holder: <strong>{holder.name}</strong> ({holder.upiId || 'via QR code'})
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono">
+                              {formatINR(shareData.total)}
+                            </div>
+                            <div className="text-[10px] text-slate-400">Total to Pay</div>
+                          </div>
+                        </div>
+
+                        {/* Exact Mathematical Formula & Itemized Breakdown */}
+                        <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-slate-800/80 border border-amber-200/60 dark:border-amber-900/40 space-y-1.5">
+                          <div className="flex items-center justify-between text-xs font-bold">
+                            <span className="text-[10px] uppercase text-slate-500 tracking-wider">Formula:</span>
+                            <span className="font-mono text-indigo-600 dark:text-indigo-400 font-black text-sm">
+                              {formulaStr}
+                            </span>
+                          </div>
+                          <div className="pt-1.5 border-t border-amber-200/50 dark:border-slate-700 space-y-1">
+                            {shareData.breakdown.map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-xs">
+                                <span className="text-slate-600 dark:text-slate-400 font-medium">• {item.title}:</span>
+                                <span className="font-bold text-slate-900 dark:text-white font-mono">{formatINR(item.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="pt-1.5 border-t border-amber-200/60 dark:border-slate-700 flex items-center justify-between text-xs font-black">
+                            <span className="text-slate-700 dark:text-slate-300">Total Calculated Amount:</span>
+                            <span className="text-amber-700 dark:text-amber-300 font-mono font-extrabold text-sm">{formatINR(shareData.total)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pay Options at the End */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                        <a
+                          href={
+                            holder.upiId
+                              ? `upi://pay?pa=${holder.upiId}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(shareData.total)}&cu=INR&tn=${encodeURIComponent(bill.title)}`
+                              : undefined
+                          }
+                          onClick={(e) => {
+                            if (!holder.upiId) {
+                              e.preventDefault();
+                              alert('Holder UPI not configured. Please use QR code or ask Holder.');
+                              return;
+                            }
+                            handleInitiateUpiPayment({
+                              billId: bill.id,
+                              billTitle: bill.title,
+                              amount: shareData.total,
+                              recipient: holder,
+                              breakdownStr: formulaStr,
+                            });
+                          }}
+                          className="flex items-center justify-center gap-1 py-2 px-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm text-center active:scale-95 transition-transform"
+                        >
+                          <span>⚡ Pay UPI</span>
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedQrBill({
+                              bill,
+                              shareAmount: shareData.total,
+                              breakdown: shareData.breakdown,
+                            });
+                            setShowHolderQrForRent(true);
+                          }}
+                          className="flex items-center justify-center gap-1 py-2 px-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>Show QR</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setRequestingExtensionBill(bill)}
+                          className="flex items-center justify-center gap-1 py-2 px-2.5 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 rounded-xl transition-colors col-span-2 sm:col-span-1"
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>Ask Time</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {myPendingArrears.length === 0 ? (
             <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
@@ -1047,85 +1370,148 @@ export default function MemberPortal({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {recurringBills.map((bill) => {
-                const splitCount = bill.splitMemberIds?.length || allMembers.length || 1;
-                const myShare = bill.amount / splitCount;
+                const shareData = calculateMemberBillShare(bill, currentMember.id);
+                const status = getRecurringBillStatus(bill);
+                const isParticipating =
+                  shareData.total > 0 ||
+                  (bill.splitMemberIds && bill.splitMemberIds.includes(currentMember.id));
+                const formulaStr =
+                  shareData.breakdown.length > 1
+                    ? `(${shareData.breakdown.map((i) => formatINR(i.amount)).join(' + ')})`
+                    : formatINR(shareData.total);
 
                 return (
                   <div
                     key={bill.id}
-                    className="p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-800 shadow-md space-y-4"
+                    className="p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-800 shadow-md space-y-4 flex flex-col justify-between"
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                          Due Every {bill.dueDay}th of Month
-                        </span>
-                        <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1">
-                          {bill.title}
-                        </h3>
-                        <p className="text-xs text-slate-500">
-                          Category: {bill.category} &bull; Split among {splitCount} mates
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                          {formatINR(bill.amount)}
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                              Due Every {bill.dueDay}th of Month
+                            </span>
+                            {status.isWithinReminderWindow && (
+                              <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 animate-pulse">
+                                {status.daysRemaining === 0 ? 'DUE TODAY' : `Due in ${status.daysRemaining}d`}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1">
+                            {bill.title}
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            Category: {bill.category} &bull; Holder: {holder.name}
+                          </p>
                         </div>
-                        <div className="text-[10px] text-slate-400">Total Monthly Bill</div>
+                        <div className="text-right shrink-0">
+                          <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                            {formatINR(bill.amount)}
+                          </div>
+                          <div className="text-[10px] text-slate-400">Total Base Monthly Bill</div>
+                        </div>
                       </div>
+
+                      {bill.notes && (
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 italic">
+                          {bill.notes}
+                        </div>
+                      )}
+
+                      {/* Formula & Itemized Line-Items Breakdown (Ex: 2000 + 3000, Rent - 2000, Deposite - 3000) */}
+                      {isParticipating ? (
+                        <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-slate-800/90 border border-indigo-200 dark:border-indigo-900/60 space-y-2">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
+                            <span className="text-[10px] uppercase text-slate-500 tracking-wider">Formula:</span>
+                            <span className="font-mono text-indigo-600 dark:text-indigo-400 font-black text-sm">
+                              {formulaStr}
+                            </span>
+                          </div>
+
+                          <div className="pt-2 border-t border-indigo-200/50 dark:border-slate-700 space-y-1">
+                            {shareData.breakdown.map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-xs">
+                                <span className="text-slate-700 dark:text-slate-300 font-medium">
+                                  • {item.title}
+                                </span>
+                                <span className="font-bold font-mono text-slate-900 dark:text-white">
+                                  {formatINR(item.amount)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="pt-2 border-t border-indigo-200/60 dark:border-slate-700 flex items-center justify-between text-xs font-black">
+                            <span className="text-slate-700 dark:text-slate-300">Total Calculated Amount:</span>
+                            <span className="text-indigo-600 dark:text-indigo-400 text-base font-extrabold font-mono">
+                              {formatINR(shareData.total)}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-400 italic">
+                          You are not included in this bill split (₹0.00).
+                        </div>
+                      )}
                     </div>
 
-                    {bill.notes && (
-                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 italic">
-                        {bill.notes}
+                    {/* Pay Options at the End */}
+                    {isParticipating && (
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <a
+                            href={
+                              holder.upiId
+                                ? `upi://pay?pa=${holder.upiId}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(shareData.total)}&cu=INR&tn=${encodeURIComponent(bill.title)}`
+                                : undefined
+                            }
+                            onClick={(e) => {
+                              if (!holder.upiId) {
+                                e.preventDefault();
+                                alert('Holder has not configured a UPI ID yet. Please check with Holder or view QR.');
+                                return;
+                              }
+                              handleInitiateUpiPayment({
+                                billId: bill.id,
+                                billTitle: bill.title,
+                                amount: shareData.total,
+                                recipient: holder,
+                                breakdownStr: formulaStr,
+                              });
+                            }}
+                            className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
+                          >
+                            <span>⚡ Pay UPI ({formatINR(shareData.total)})</span>
+                          </a>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedQrBill({
+                                bill,
+                                shareAmount: shareData.total,
+                                breakdown: shareData.breakdown,
+                              });
+                              setShowHolderQrForRent(true);
+                            }}
+                            className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Show QR</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setRequestingExtensionBill(bill)}
+                            className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 rounded-xl transition-colors"
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>Ask Time</span>
+                          </button>
+                        </div>
                       </div>
                     )}
-
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs text-slate-500">Your Share:</div>
-                        <div className="text-base font-black text-slate-900 dark:text-white">
-                          {formatINR(myShare)} / mate
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <a
-                          href={
-                            holder.upiId
-                              ? `upi://pay?pa=${holder.upiId}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(myShare)}&cu=INR&tn=${encodeURIComponent(bill.title)}`
-                              : undefined
-                          }
-                          onClick={(e) => {
-                            if (!holder.upiId) {
-                              e.preventDefault();
-                              alert('Holder has not configured a UPI ID yet. Please check with Holder or view QR.');
-                            }
-                          }}
-                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
-                        >
-                          <span>Pay UPI</span>
-                        </a>
-
-                        <button
-                          type="button"
-                          onClick={() => setShowHolderQrForRent(true)}
-                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>Show QR</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setRequestingExtensionBill(bill)}
-                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 rounded-xl transition-colors"
-                        >
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>Ask Time</span>
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 );
               })}
@@ -2341,31 +2727,43 @@ export default function MemberPortal({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 text-center space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Holder Payment QR &amp; UPI
-              </h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {selectedQrBill ? selectedQrBill.bill.title : 'Holder Payment QR & UPI'}
+                </h3>
+                {selectedQrBill && (
+                  <p className="text-[11px] text-slate-500">
+                    Recipient: {holder.name} &bull; Exact Share: {formatINR(selectedQrBill.shareAmount)}
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => setShowHolderQrForRent(false)}
+                onClick={() => {
+                  setShowHolderQrForRent(false);
+                  setSelectedQrBill(null);
+                }}
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 dark:border-slate-700 inline-block shadow-inner">
-              {holder.qrCodeUrl ? (
-                <img
-                  src={holder.qrCodeUrl}
-                  alt={`${holder.name} QR Code`}
-                  className="w-48 h-48 object-contain mx-auto rounded-lg"
-                />
-              ) : (
-                <div className="w-48 h-48 flex flex-col items-center justify-center bg-slate-50 text-slate-400 rounded-lg">
-                  <QrCode className="w-16 h-16 mb-2 text-slate-300" />
-                  <span className="text-xs">UPI QR Code</span>
+            {selectedQrBill && selectedQrBill.breakdown.length > 1 && (
+              <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-slate-800/80 border border-indigo-200/50 dark:border-indigo-900/40 text-xs">
+                <div className="font-bold text-indigo-950 dark:text-indigo-200 text-center font-mono">
+                  Formula: ({selectedQrBill.breakdown.map((i) => formatINR(i.amount)).join(' + ')})
                 </div>
-              )}
+              </div>
+            )}
+
+            <div className="p-2 bg-white rounded-2xl border-2 border-slate-200 dark:border-slate-700 inline-block shadow-inner">
+              <QRCodeDisplay
+                name={holder.name}
+                upiId={holder.upiId}
+                customQrUrl={holder.qrCodeUrl}
+                amount={selectedQrBill ? selectedQrBill.shareAmount : undefined}
+              />
             </div>
 
             <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs space-y-1">
@@ -2376,6 +2774,23 @@ export default function MemberPortal({
             </div>
 
             <div className="flex items-center gap-2">
+              {selectedQrBill && holder.upiId && (
+                <a
+                  href={`upi://pay?pa=${holder.upiId}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(selectedQrBill.shareAmount)}&cu=INR&tn=${encodeURIComponent(selectedQrBill.bill.title)}`}
+                  onClick={() => {
+                    handleInitiateUpiPayment({
+                      billId: selectedQrBill.bill.id,
+                      billTitle: selectedQrBill.bill.title,
+                      amount: selectedQrBill.shareAmount,
+                      recipient: holder,
+                      breakdownStr: selectedQrBill.breakdown.map((i) => `${i.title}: ${formatINR(i.amount)}`).join(' + '),
+                    });
+                  }}
+                  className="flex-1 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm text-center"
+                >
+                  Pay via UPI
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -2392,13 +2807,214 @@ export default function MemberPortal({
               </button>
               <button
                 type="button"
-                onClick={() => setShowHolderQrForRent(false)}
-                className="flex-1 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm"
+                onClick={() => {
+                  setShowHolderQrForRent(false);
+                  setSelectedQrBill(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl"
               >
                 Close
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: AUTOMATED UPI PAYMENT RETURN DETECTION ================= */}
+      {showUpiReturnConfirmModal && pendingUpiSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border-2 border-emerald-500 text-center space-y-4 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl shadow-inner animate-bounce">
+              ⚡
+            </div>
+
+            <div>
+              <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                Automated UPI Return Detected
+              </span>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1.5">
+                Did your payment succeed?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                We detected that you just completed your transaction in Google Pay, PhonePe, or Paytm.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 text-left">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Bill / Expense:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{pendingUpiSession.billTitle}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Recipient:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{pendingUpiSession.toMemberName}</span>
+              </div>
+              {pendingUpiSession.breakdownStr && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Breakdown:</span>
+                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{pendingUpiSession.breakdownStr}</span>
+                </div>
+              )}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Total Paid:</span>
+                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {formatINR(pendingUpiSession.amount)}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={handleConfirmUpiPaid}
+                className="w-full py-3.5 px-4 text-sm font-black text-white bg-emerald-600 hover:bg-emerald-500 rounded-2xl shadow-lg shadow-emerald-600/30 transition-transform active:scale-95 flex items-center justify-center gap-2"
+              >
+                <Check className="w-5 h-5" />
+                <span>Yes, Payment Successful &bull; Confirm &amp; Send WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDismissUpiReturn}
+                className="w-full py-2.5 px-4 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              >
+                No / Payment Cancelled &bull; Try Again Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: 1-CLICK IN-APP DIRECT PAYMENT (FROM DEEP LINK) ================= */}
+      {directPayModalBill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border-2 border-indigo-500 space-y-4">
+            {(() => {
+              const shareData = calculateMemberBillShare(directPayModalBill, currentMember.id);
+              const status = getRecurringBillStatus(directPayModalBill);
+              const formulaStr =
+                shareData.breakdown.length > 1
+                  ? `(${shareData.breakdown.map((i) => formatINR(i.amount)).join(' + ')})`
+                  : formatINR(shareData.total);
+
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="p-2 rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-bold text-sm">
+                        ⚡ 1-Click Pay
+                      </span>
+                      <div>
+                        <h3 className="text-base font-black text-slate-900 dark:text-white">
+                          {directPayModalBill.title}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Due Date: {status.formattedDueDate} ({status.daysRemaining === 0 ? 'Today!' : `in ${status.daysRemaining} days`})
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDirectPayModalBill(null)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Formula and Line-Item Breakdown */}
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-slate-800/80 border border-indigo-200 dark:border-indigo-900/60 space-y-2 text-left">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
+                      <span className="text-[10px] uppercase text-slate-500">Formula:</span>
+                      <span className="font-mono text-indigo-600 dark:text-indigo-400 font-black">
+                        {formulaStr}
+                      </span>
+                    </div>
+                    <div className="pt-1.5 border-t border-indigo-200/50 dark:border-slate-700 space-y-1">
+                      {shareData.breakdown.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs">
+                          <span className="text-slate-600 dark:text-slate-400">• {item.title}:</span>
+                          <span className="font-bold text-slate-900 dark:text-white font-mono">{formatINR(item.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="pt-2 border-t border-indigo-200/60 dark:border-slate-700 flex items-center justify-between text-xs font-black">
+                      <span className="text-slate-700 dark:text-slate-300">Total Calculated to Pay:</span>
+                      <span className="text-indigo-600 dark:text-indigo-400 text-lg font-black font-mono">
+                        {formatINR(shareData.total)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* QR Code Canvas */}
+                  <div className="flex justify-center p-2 bg-white rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <QRCodeDisplay
+                      name={holder.name}
+                      upiId={holder.upiId}
+                      customQrUrl={holder.qrCodeUrl}
+                      amount={shareData.total}
+                    />
+                  </div>
+
+                  {/* Big Action Buttons */}
+                  <div className="space-y-2 pt-1">
+                    <a
+                      href={
+                        holder.upiId
+                          ? `upi://pay?pa=${holder.upiId}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(shareData.total)}&cu=INR&tn=${encodeURIComponent(directPayModalBill.title)}`
+                          : undefined
+                      }
+                      onClick={(e) => {
+                        if (!holder.upiId) {
+                          e.preventDefault();
+                          alert('Holder UPI ID is not configured. Please use QR code or transfer directly.');
+                          return;
+                        }
+                        handleInitiateUpiPayment({
+                          billId: directPayModalBill.id,
+                          billTitle: directPayModalBill.title,
+                          amount: shareData.total,
+                          recipient: holder,
+                          breakdownStr: formulaStr,
+                        });
+                      }}
+                      className="w-full py-3 px-4 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 rounded-2xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2 text-center"
+                    >
+                      <span>⚡ Open Google Pay / PhonePe / Paytm &bull; {formatINR(shareData.total)}</span>
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSubmitPaymentClaim) {
+                          onSubmitPaymentClaim({
+                            fromMemberId: currentMember.id,
+                            toMemberId: holder.id,
+                            amount: shareData.total,
+                            note: `Direct payment claim for ${directPayModalBill.title} (${formulaStr})`,
+                          });
+                        }
+                        setDirectPayModalBill(null);
+                        setPaymentClaimToast(`Payment claim for ${formatINR(shareData.total)} recorded!`);
+                        setTimeout(() => setPaymentClaimToast(null), 4000);
+                      }}
+                      className="w-full py-2.5 px-4 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl"
+                    >
+                      I Already Paid &bull; Submit Claim Manually
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Notification */}
+      {paymentClaimToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xl border border-slate-700 text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{paymentClaimToast}</span>
         </div>
       )}
     </div>

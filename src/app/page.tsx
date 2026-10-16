@@ -73,6 +73,7 @@ export default function Home() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [inspectingClaim, setInspectingClaim] = useState<DirectPaymentClaim | null>(null);
   const [dismissedAlertId, setDismissedAlertId] = useState<string | null>(null);
+  const [deepLinkPayAction, setDeepLinkPayAction] = useState<{ billId?: string; amount?: number } | null>(null);
 
   // Load state on mount & connect to real-time Firebase sync
   useEffect(() => {
@@ -80,6 +81,30 @@ export default function Home() {
     setAppState(loaded);
     const holder = loaded.members.find((m) => m.isHolder) || loaded.members[0];
     setCurrentMemberId(holder.id);
+
+    // Check URL search params for 1-click WhatsApp in-app payment deep link
+    // e.g. https://flat-mate-ashy.vercel.app/?action=pay&billId=rec_rent&memberId=mem_2&amount=5000
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const actionParam = searchParams.get('action');
+      const memberIdParam = searchParams.get('memberId');
+      const billIdParam = searchParams.get('billId');
+      const amountParam = searchParams.get('amount');
+
+      if (actionParam === 'pay' && memberIdParam) {
+        const foundMember = loaded.members.find((m) => m.id === memberIdParam);
+        if (foundMember) {
+          setCurrentMemberId(foundMember.id);
+          setActivePortalType('member');
+          if (billIdParam) {
+            setDeepLinkPayAction({
+              billId: billIdParam,
+              amount: amountParam ? parseFloat(amountParam) : undefined,
+            });
+          }
+        }
+      }
+    }
 
     // Live sync with Firebase Firestore if credentials are provided
     const unsubscribeFirebase = subscribeToFirebaseSync(
@@ -968,6 +993,9 @@ export default function Home() {
             onRevertShare={handleRevertShare}
             onOpenHolderPortal={handleRequestHolderPortal}
             onUpdateMember={handleUpdateMember}
+            onSubmitPaymentClaim={handleSubmitPaymentClaim}
+            deepLinkPayAction={deepLinkPayAction}
+            onClearDeepLinkPayAction={() => setDeepLinkPayAction(null)}
           />
         )}
       </main>

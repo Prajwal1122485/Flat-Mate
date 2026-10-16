@@ -194,6 +194,8 @@ export function buildRentReminderText(params: {
   daysRemaining: number;
   perPersonShare: number;
   breakdown?: { title: string; amount: number }[];
+  billId?: string;
+  memberId?: string;
 }): string {
   const {
     memberName,
@@ -204,6 +206,8 @@ export function buildRentReminderText(params: {
     daysRemaining,
     perPersonShare,
     breakdown,
+    billId,
+    memberId,
   } = params;
   const formattedAmt = `₹${perPersonShare.toFixed(2)}`;
 
@@ -214,10 +218,12 @@ export function buildRentReminderText(params: {
 
   let msg = `🔔 *Flat Rent & Bills Reminder - ${urgency}*\n\n`;
   msg += `Hi ${memberName}! 👋\n`;
-  msg += `This is a reminder for *${billTitle}* scheduled for *${formattedDueDate}*.\n\n`;
+  msg += `This is an automated reminder for *${billTitle}* scheduled for *${formattedDueDate}*.\n\n`;
 
   if (breakdown && breakdown.length > 0) {
-    msg += `📋 *Itemized Details:*\n`;
+    msg += `📋 *Itemized Formula & Breakdown:*\n`;
+    const formulaStr = breakdown.map((i) => `₹${Math.round(i.amount)}`).join(' + ');
+    msg += `(${formulaStr}) = *${formattedAmt}*\n`;
     breakdown.forEach((item) => {
       msg += `  • ${item.title}: ₹${item.amount.toFixed(2)}\n`;
     });
@@ -229,8 +235,14 @@ export function buildRentReminderText(params: {
   msg += `👤 Send to Holder: *${holderName}*\n`;
   if (holderUpiId) {
     msg += `💳 Holder UPI ID: *${holderUpiId}*\n`;
-    msg += `👉 (Scan Holder QR on our Flat-Mate App)\n\n`;
   }
+  msg += `📱 View Holder QR Code on Flat-Mate App\n\n`;
+
+  if (billId && memberId) {
+    msg += `⚡ *1-Click In-App Direct Payment:* \n`;
+    msg += `https://flat-mate-ashy.vercel.app/?action=pay&billId=${billId}&memberId=${memberId}&amount=${Math.round(perPersonShare)}\n\n`;
+  }
+
   msg += `Please complete the payment on or before the due date. Once paid, mark it in the app. Thank you! 🙏`;
   return msg;
 }
@@ -318,17 +330,23 @@ export function getAutomatedRentReminders(
   recurringBills.forEach((bill) => {
     const status = getRecurringBillStatus(bill);
     if (status.isWithinReminderWindow) {
-      const splitTargets =
-        bill.splitMemberIds && bill.splitMemberIds.length > 0
-          ? bill.splitMemberIds
-          : members.map((m) => m.id);
+      // Gather all members included in base split or in subItems
+      const allTargetIds = new Set<string>();
+      (bill.splitMemberIds && bill.splitMemberIds.length > 0
+        ? bill.splitMemberIds
+        : members.map((m) => m.id)
+      ).forEach((id) => allTargetIds.add(id));
+      (bill.subItems || []).forEach((sub) =>
+        (sub.memberIds || []).forEach((id) => allTargetIds.add(id))
+      );
 
-      const perPerson = bill.amount / splitTargets.length;
-
-      splitTargets.forEach((targetId) => {
+      allTargetIds.forEach((targetId) => {
         if (targetId === bill.payerId) return;
         const targetMember = memberMap.get(targetId);
         if (!targetMember) return;
+
+        const { total, breakdown } = calculateMemberBillShare(bill, targetId);
+        if (total <= 0) return;
 
         const msg = buildRentReminderText({
           memberName: targetMember.name,
@@ -338,7 +356,10 @@ export function getAutomatedRentReminders(
           dueDay: bill.dueDay,
           formattedDueDate: status.formattedDueDate,
           daysRemaining: status.daysRemaining,
-          perPersonShare: perPerson,
+          perPersonShare: total,
+          breakdown: breakdown,
+          billId: bill.id,
+          memberId: targetMember.id,
         });
 
         reminders.push({
@@ -348,7 +369,7 @@ export function getAutomatedRentReminders(
           formattedDueDate: status.formattedDueDate,
           daysRemaining: status.daysRemaining,
           debtor: targetMember,
-          amount: Math.round(perPerson * 100) / 100,
+          amount: Math.round(total * 100) / 100,
           whatsappUrl: generateWhatsAppLink(targetMember.phone, msg),
         });
       });

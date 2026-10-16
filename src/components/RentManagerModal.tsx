@@ -990,6 +990,8 @@ export default function RentManagerModal({
                             daysRemaining: status.daysRemaining,
                             perPersonShare: memberShare.total,
                             breakdown: memberShare.breakdown,
+                            billId: bill.id,
+                            memberId: m.id,
                           });
                           const waUrl = generateWhatsAppLink(m.phone, waText);
 

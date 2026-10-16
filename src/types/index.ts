@@ -105,12 +105,18 @@ export interface HolderNotification {
   id: string;
   title: string;
   message: string;
-  type: 'PAYMENT_CLAIM' | 'PAYMENT_CONFIRMED' | 'PURCHASE_REQUEST' | 'RENT_ALERT' | 'INFO';
+  type: 'PAYMENT_CLAIM' | 'PAYMENT_CONFIRMED' | 'PURCHASE_REQUEST' | 'RENT_ALERT' | 'EXTENSION_REQUEST' | 'INFO';
   timestamp: string;
   read: boolean;
   targetMemberId?: string; // which member this relates to
+  fromMemberId?: string; // sender
+  toMemberId?: string; // recipient
+  amount?: number; // payment or bill amount
+  billId?: string;
+  billTitle?: string;
   claimId?: string;
   shareId?: string;
+  actionType?: 'CONFIRM_CLAIM' | 'VIEW_BILL' | 'EXTEND_TIME' | 'BUY_REQUEST' | 'INFO';
 }
 
 export interface NetBalanceDetail {

@@ -6,8 +6,8 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  ShieldCheck,
   Users,
+  Loader2,
 } from 'lucide-react';
 import { Member } from '@/types';
 
@@ -38,9 +38,8 @@ export default function ProfileSelector({
   const [hasError, setHasError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // 2-Second Professional Welcome Loading State
+  // Fast 1-Second Login State with Circular Loading
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
-  const [welcomeProgress, setWelcomeProgress] = useState<number>(0);
   const [authenticatedUser, setAuthenticatedUser] = useState<{
     name: string;
     isHolder: boolean;
@@ -54,33 +53,18 @@ export default function ProfileSelector({
   const activeSelectedMember =
     mates.find((m) => m.id === selectedTarget) || mates[0];
 
-  // Professional 2-second progress animation without glitters or confetti
+  // Exactly 1.0-second redirect animation
   useEffect(() => {
     if (!isAuthenticating || !authenticatedUser) return;
 
-    const intervalTime = 40; // 50 steps over 2000ms
-    const stepIncrement = 2;
-
-    const timer = setInterval(() => {
-      setWelcomeProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(timer);
-          return 100;
-        }
-        return prev + stepIncrement;
-      });
-    }, intervalTime);
-
-    // After exactly 2.0 seconds, enter the chosen member portal
     const exitTimer = setTimeout(() => {
       if (authenticatedUser.member) {
         onSelectMemberPortal(authenticatedUser.member);
       }
       if (onClose) onClose();
-    }, 2000);
+    }, 1000);
 
     return () => {
-      clearInterval(timer);
       clearTimeout(exitTimer);
     };
   }, [isAuthenticating, authenticatedUser, onSelectMemberPortal, onClose]);
@@ -151,23 +135,20 @@ export default function ProfileSelector({
               </p>
             </div>
 
-            {/* Smooth Professional Progress Bar */}
-            <div className="space-y-2 pt-2">
-              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700/60">
-                <div
-                  className="bg-indigo-500 h-full rounded-full transition-all duration-75 ease-out"
-                  style={{ width: `${welcomeProgress}%` }}
-                />
+            {/* Circular Loading Animation & Redirecting */}
+            <div className="py-5 space-y-3 flex flex-col items-center justify-center">
+              <div className="relative w-12 h-12 flex items-center justify-center">
+                <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
               </div>
-              <div className="flex justify-between items-center text-[11px] text-slate-500 font-medium">
-                <span>Authenticating</span>
-                <span>{welcomeProgress}%</span>
+              <div className="space-y-1 text-center">
+                <p className="text-base font-extrabold text-white tracking-wide animate-pulse">
+                  Redirecting...
+                </p>
+                <p className="text-xs text-slate-400">
+                  Opening Personal Register &amp; Ledger
+                </p>
               </div>
             </div>
-
-            <p className="text-xs text-slate-400 font-medium">
-              Loading dashboard...
-            </p>
           </div>
         ) : (
           /* ================= STATE B: MAIN LOGIN CARD ================= */

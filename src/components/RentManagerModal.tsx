@@ -1001,6 +1001,12 @@ export default function RentManagerModal({
                               href={waUrl}
                               target="_blank"
                               rel="noopener noreferrer"
+                              onClick={() => {
+                                onUpdateBill({
+                                  ...bill,
+                                  lastReminderSentAt: new Date().toISOString(),
+                                });
+                              }}
                               className="flex items-center justify-between px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 transition-all text-slate-800 dark:text-slate-200 group"
                             >
                               <div className="truncate">

@@ -14,6 +14,7 @@ import RequestItemModal from '@/components/RequestItemModal';
 import EditMemberModal from '@/components/EditMemberModal';
 import MemberProfileModal from '@/components/MemberProfileModal';
 import EditExpenseModal from '@/components/EditExpenseModal';
+import PortalNotificationModal from '@/components/PortalNotificationModal';
 import {
   Member,
   Expense,
@@ -44,7 +45,7 @@ import {
   wipeFirestoreToBlank,
   FirebaseSyncStatus,
 } from '@/lib/firebaseSync';
-import { calculateExactSplit } from '@/lib/calculations';
+import { calculateExactSplit, formatINR } from '@/lib/calculations';
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState | null>(null);
@@ -197,10 +198,35 @@ export default function Home() {
     (c) => c.toMemberId === currentMember.id && c.status === 'PENDING'
   );
 
-  // Live Payment Alert for Rent or direct shares paid
-  const latestPaymentAlert = notifications.find(
-    (n) => (n.type === 'PAYMENT_CLAIM' || n.type === 'PAYMENT_CONFIRMED') && !n.read && n.id !== dismissedAlertId
-  ) || null;
+  // Wide-screen interactive portal notification:
+  // When logged in, any unread message addressed to this person (or to Holder)
+  // opens in a wide screen dialog with direct 1-click action buttons
+  const activePortalNotification =
+    activePortalType === 'gatekeeper'
+      ? null
+      : notifications.find((n) => {
+          if (n.read || n.id === dismissedAlertId) return false;
+
+          const currentActiveMemberId =
+            activePortalType === 'holder' ? holder.id : currentMember.id;
+
+          // If logged in as Holder: show claims to holder, extension requests, or purchase requests
+          if (activePortalType === 'holder') {
+            return (
+              n.toMemberId === holder.id ||
+              n.targetMemberId === holder.id ||
+              n.type === 'PAYMENT_CLAIM' ||
+              n.type === 'EXTENSION_REQUEST' ||
+              n.type === 'PURCHASE_REQUEST'
+            );
+          }
+
+          // If logged in as Roommate: show notifications directed to this roommate
+          return (
+            n.toMemberId === currentActiveMemberId ||
+            n.targetMemberId === currentActiveMemberId
+          );
+        }) || null;
 
   // Check if within 10-second grace window after exiting holder portal
   const isWithinGracePeriod = () => {
@@ -414,6 +440,11 @@ export default function Home() {
       timestamp: new Date().toISOString(),
       read: false,
       claimId,
+      fromMemberId: data.fromMemberId,
+      toMemberId: data.toMemberId,
+      targetMemberId: data.toMemberId,
+      amount: data.amount,
+      actionType: 'CONFIRM_CLAIM',
     };
 
     updateState((prev) => ({
@@ -474,6 +505,11 @@ export default function Home() {
         type: 'PAYMENT_CONFIRMED',
         timestamp: new Date().toISOString(),
         read: false,
+        fromMemberId: claim.toMemberId,
+        toMemberId: claim.fromMemberId,
+        targetMemberId: claim.fromMemberId,
+        amount: claim.amount,
+        actionType: 'INFO',
       };
 
       return {
@@ -499,6 +535,11 @@ export default function Home() {
       type: 'INFO',
       timestamp: new Date().toISOString(),
       read: false,
+      fromMemberId: claim.toMemberId,
+      toMemberId: claim.fromMemberId,
+      targetMemberId: claim.fromMemberId,
+      amount: claim.amount,
+      actionType: 'INFO',
     };
 
     updateState((prev) => ({
@@ -510,6 +551,38 @@ export default function Home() {
         claim.shareIds?.includes(s.id) ? { ...s, status: 'ARREAR' as const } : s
       ),
       notifications: [rejectNotification, ...prev.notifications],
+    }));
+  };
+
+  // Time Extension Request
+  const handleSendExtensionRequest = (data: {
+    billId: string;
+    billTitle: string;
+    fromMemberId: string;
+    days: number;
+    reason: string;
+    amount: number;
+  }) => {
+    const sender = members.find((m) => m.id === data.fromMemberId);
+    const newNotif: HolderNotification = {
+      id: `notif_${Date.now()}`,
+      title: '⏰ Time Extension Requested',
+      message: `${sender?.name} requested an extension of ${data.days} days for "${data.billTitle}" (${formatINR(data.amount)}). Reason: ${data.reason}`,
+      type: 'EXTENSION_REQUEST',
+      timestamp: new Date().toISOString(),
+      read: false,
+      fromMemberId: data.fromMemberId,
+      toMemberId: holder.id,
+      targetMemberId: holder.id,
+      amount: data.amount,
+      billId: data.billId,
+      billTitle: data.billTitle,
+      actionType: 'EXTEND_TIME',
+    };
+
+    updateState((prev) => ({
+      ...prev,
+      notifications: [newNotif, ...prev.notifications],
     }));
   };
 
@@ -540,7 +613,11 @@ export default function Home() {
       type: 'PURCHASE_REQUEST',
       timestamp: new Date().toISOString(),
       read: false,
-      targetMemberId: data.requestedById,
+      targetMemberId: holder.id,
+      fromMemberId: data.requestedById,
+      toMemberId: holder.id,
+      amount: data.estimatedCost,
+      actionType: 'BUY_REQUEST',
     };
 
     updateState((prev) => ({
@@ -582,6 +659,14 @@ export default function Home() {
     updateState((prev) => ({
       ...prev,
       purchaseRequests: prev.purchaseRequests.filter((r) => r.id !== requestId),
+    }));
+  };
+
+  // Delete payment claim
+  const handleDeletePaymentClaim = (claimId: string) => {
+    updateState((prev) => ({
+      ...prev,
+      paymentClaims: prev.paymentClaims.filter((c) => c.id !== claimId),
     }));
   };
 
@@ -964,6 +1049,8 @@ export default function Home() {
             onOpenEditExpense={(exp) => setEditingExpense(exp)}
             onDeleteExpense={handleDeleteExpense}
             onDeletePurchaseRequest={handleDeletePurchaseRequest}
+            onDeletePaymentClaim={handleDeletePaymentClaim}
+            onUpdateBill={handleUpdateBill}
             onUpdateMember={handleUpdateMember}
             onClearAllTransactions={handleClearAllTransactions}
             onResetToCompletelyBlank={handleResetToCompletelyBlank}
@@ -1011,6 +1098,7 @@ export default function Home() {
             onSubmitPaymentClaim={handleSubmitPaymentClaim}
             deepLinkPayAction={deepLinkPayAction}
             onClearDeepLinkPayAction={() => setDeepLinkPayAction(null)}
+            onSendExtensionRequest={handleSendExtensionRequest}
           />
         )}
       </main>
@@ -1104,52 +1192,21 @@ export default function Home() {
         </div>
       )}
 
-      {/* Live Payment Alert Floating Popup */}
-      {latestPaymentAlert && (
-        <div className="fixed bottom-5 right-5 z-50 max-w-sm w-full bg-slate-900 text-white rounded-2xl p-4 shadow-2xl border-2 border-emerald-500/80 animate-in slide-in-from-bottom-5 duration-300">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-lg flex-shrink-0">
-              ₹
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                  Payment Notification
-                </span>
-                <button
-                  onClick={() => setDismissedAlertId(latestPaymentAlert.id)}
-                  className="text-slate-400 hover:text-white text-xs font-bold p-0.5"
-                >
-                  ✕
-                </button>
-              </div>
-              <p className="text-sm font-bold text-white mt-0.5">
-                {latestPaymentAlert.title}
-              </p>
-              <p className="text-xs text-slate-300 mt-1 line-clamp-2">
-                {latestPaymentAlert.message}
-              </p>
-              <div className="mt-2.5 flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setDismissedAlertId(latestPaymentAlert.id);
-                    handleRequestHolderPortal();
-                  }}
-                  className="text-xs font-bold px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
-                >
-                  Open Ledger
-                </button>
-                <button
-                  onClick={() => setDismissedAlertId(latestPaymentAlert.id)}
-                  className="text-xs font-semibold px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Wide Screen Portal-to-Portal Notification Dialog */}
+      <PortalNotificationModal
+        isOpen={!!activePortalNotification}
+        notification={activePortalNotification}
+        allMembers={members}
+        currentMember={activePortalType === 'holder' ? holder : currentMember}
+        onConfirmPaymentClaim={handleConfirmPaymentClaim}
+        onRejectPaymentClaim={handleRejectPaymentClaim}
+        onMarkNotificationRead={handleMarkNotificationRead}
+        onClose={() => {
+          if (activePortalNotification) {
+            setDismissedAlertId(activePortalNotification.id);
+          }
+        }}
+      />
 
       {/* 1. Member Check Modal (Triggered by Check button in Mates directory) */}
       <MemberCheckModal

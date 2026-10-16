@@ -97,6 +97,14 @@ interface MemberPortalProps {
   }) => void;
   deepLinkPayAction?: { billId?: string; amount?: number } | null;
   onClearDeepLinkPayAction?: () => void;
+  onSendExtensionRequest?: (data: {
+    billId: string;
+    billTitle: string;
+    fromMemberId: string;
+    days: number;
+    reason: string;
+    amount: number;
+  }) => void;
 }
 
 export default function MemberPortal({
@@ -133,6 +141,7 @@ export default function MemberPortal({
   onSubmitPaymentClaim,
   deepLinkPayAction,
   onClearDeepLinkPayAction,
+  onSendExtensionRequest,
 }: MemberPortalProps) {
   // 10 Tabs matching exact user requirements
   const [activeTab, setActiveTab] = useState<
@@ -328,7 +337,7 @@ export default function MemberPortal({
   const memberMap = useMemo(() => new Map(allMembers.map((m) => [m.id, m])), [allMembers]);
   const expenseMap = useMemo(() => new Map(expenses.map((e) => [e.id, e])), [expenses]);
 
-  // Auto-transfer 3-day upcoming rent / bills into Arrear folder for this member
+  // Auto-transfer upcoming rent / bills into Arrear folder ONLY within 3 days before due date and AFTER WhatsApp reminder is sent
   const upcomingDueBillsForMe = useMemo(() => {
     if (currentMember.id === holder.id) return [];
     return recurringBills
@@ -341,7 +350,15 @@ export default function MemberPortal({
           shareData,
         };
       })
-      .filter((item) => item.status.daysRemaining <= 3 && item.shareData.total > 0);
+      .filter((item) => {
+        // Strictly 3 days or fewer before due date (0, 1, 2, or 3 days remaining)
+        const isWithin3Days =
+          item.status.daysRemaining >= 0 &&
+          item.status.daysRemaining <= (item.bill.reminderDaysBefore || 3);
+        // Occurs in Arrear folder ONLY after the reminder message has been dispatched
+        const isReminderSent = !!item.bill.lastReminderSentAt;
+        return isWithin3Days && isReminderSent && item.shareData.total > 0;
+      });
   }, [recurringBills, currentMember.id, holder.id]);
 
   const upcomingBillsTotal = useMemo(() => {
@@ -2718,6 +2735,16 @@ export default function MemberPortal({
                   const holderPhone = holder.phone.replace(/[^0-9]/g, '');
                   const cleanPhone = holderPhone.length === 10 ? '91' + holderPhone : holderPhone;
                   const myShare = Math.round(requestingExtensionBill.amount / (allMembers.length || 1));
+                  if (onSendExtensionRequest) {
+                    onSendExtensionRequest({
+                      billId: requestingExtensionBill.id,
+                      billTitle: requestingExtensionBill.title,
+                      fromMemberId: currentMember.id,
+                      days: extensionDays,
+                      reason: extensionReason || 'Personal delay',
+                      amount: myShare,
+                    });
+                  }
                   const msg = `Hi ${holder.name}, this is ${currentMember.name}.\nI would like to request an extension of ${extensionDays} days to pay my share of ₹${myShare} for "${requestingExtensionBill.title}".\nReason: ${extensionReason || 'Personal delay'}.\nThank you!`;
                   const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
                   window.open(waUrl, '_blank');

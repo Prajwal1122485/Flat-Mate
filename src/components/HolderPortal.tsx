@@ -71,6 +71,8 @@ interface HolderPortalProps {
   onOpenEditExpense?: (expense: Expense) => void;
   onDeleteExpense?: (expenseId: string) => void;
   onDeletePurchaseRequest?: (requestId: string) => void;
+  onDeletePaymentClaim?: (claimId: string) => void;
+  onUpdateBill?: (bill: RecurringBill) => void;
   onUpdateMember?: (updated: Member) => void;
   onClearAllTransactions?: () => void;
   onResetToCompletelyBlank?: () => void;
@@ -101,6 +103,8 @@ export default function HolderPortal({
   onOpenEditExpense,
   onDeleteExpense,
   onDeletePurchaseRequest,
+  onDeletePaymentClaim,
+  onUpdateBill,
   onUpdateMember,
   onClearAllTransactions,
   onResetToCompletelyBlank,
@@ -432,6 +436,17 @@ export default function HolderPortal({
                 automatedReminders.forEach((r, idx) => {
                   setTimeout(() => window.open(r.whatsappUrl, '_blank'), idx * 500);
                 });
+                if (onUpdateBill) {
+                  const billIds = new Set(automatedReminders.map((r) => r.billId));
+                  recurringBills
+                    .filter((b) => billIds.has(b.id))
+                    .forEach((b) => {
+                      onUpdateBill({
+                        ...b,
+                        lastReminderSentAt: new Date().toISOString(),
+                      });
+                    });
+                }
               }}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0"
             >
@@ -456,6 +471,17 @@ export default function HolderPortal({
                   href={rem.whatsappUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => {
+                    if (onUpdateBill) {
+                      const targetBill = recurringBills.find((b) => b.id === rem.billId);
+                      if (targetBill) {
+                        onUpdateBill({
+                          ...targetBill,
+                          lastReminderSentAt: new Date().toISOString(),
+                        });
+                      }
+                    }
+                  }}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 font-bold hover:bg-emerald-100 transition-colors"
                 >
                   <MessageCircle className="w-3 h-3 text-emerald-600" />
@@ -1170,6 +1196,20 @@ export default function HolderPortal({
                       </div>
 
                       <div className="flex items-center justify-end gap-2 pt-2 border-t border-indigo-100 dark:border-indigo-900">
+                        {onDeletePaymentClaim && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Delete this payment claim of ${formatINR(claim.amount)} from ${sender?.name}?`)) {
+                                onDeletePaymentClaim(claim.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-800 hover:border-red-200 transition-colors mr-auto"
+                            title="Delete this payment claim"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onRejectPaymentClaim(claim.id)}
@@ -1233,29 +1273,46 @@ export default function HolderPortal({
                         </span>
                       </div>
 
-                      {req.status !== 'PURCHASED' && (
-                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => onConvertRequestToExpense(req)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-transform active:scale-95"
-                          >
-                            <PlusCircle className="w-3.5 h-3.5" />
-                            <span>Buy &amp; Split to Everyone</span>
-                          </button>
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex-wrap">
+                        {onDeletePurchaseRequest && (
                           <button
                             type="button"
                             onClick={() => {
-                              setSubsetRequest(req);
-                              setSubsetSelectedMemberIds(members.map((m) => m.id));
+                              if (confirm(`Delete wishlist request "${req.title}"?`)) {
+                                onDeletePurchaseRequest(req.id);
+                              }
                             }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/60 rounded-lg border border-red-200 dark:border-red-800 transition-colors mr-auto"
+                            title="Delete this purchase request"
                           >
-                            <Users className="w-3.5 h-3.5" />
-                            <span>Buy &amp; Split to Selected Persons Only</span>
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
                           </button>
-                        </div>
-                      )}
+                        )}
+                        {req.status !== 'PURCHASED' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => onConvertRequestToExpense(req)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-transform active:scale-95"
+                            >
+                              <PlusCircle className="w-3.5 h-3.5" />
+                              <span>Buy &amp; Split to Everyone</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubsetRequest(req);
+                                setSubsetSelectedMemberIds(members.map((m) => m.id));
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors"
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                              <span>Buy &amp; Split to Selected Persons Only</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

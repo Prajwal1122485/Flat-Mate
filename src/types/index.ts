@@ -159,12 +159,15 @@ export interface PantryItem {
   updatedByMemberId?: string;
 }
 
+export type ChoreFrequency = 'Daily' | 'A day after' | 'Weekly' | 'Monthly' | 'Custom';
+
 export interface FlatChore {
   id: string;
   title: string;
   assignedMemberId: string;
-  frequency: 'Daily' | 'Weekly' | 'Bi-Weekly' | 'Monthly';
-  dueDay: string; // e.g., "Saturday", "Sunday", "Daily"
+  frequency: ChoreFrequency;
+  dueDate: string; // YYYY-MM-DD
+  dueDay?: string; // Backwards-compatible alias for day/date display
   status: 'PENDING' | 'DONE';
   lastCompletedAt?: string;
 }

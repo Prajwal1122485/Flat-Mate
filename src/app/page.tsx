@@ -34,7 +34,6 @@ import {
   loadAppState,
   saveAppState,
   resetAppState,
-  resetToCompletelyBlank,
   clearAllTransactionsToEmpty,
   exportBackupJSON,
   importBackupJSON,
@@ -104,6 +103,23 @@ export default function Home() {
             });
           }
         }
+      }
+
+      // Check for returning UPI payment session (in case browser reloaded when returning from UPI app)
+      try {
+        const storedUpi = localStorage.getItem('flatmate_pending_upi_session');
+        if (storedUpi) {
+          const session = JSON.parse(storedUpi);
+          if (session && session.fromMemberId && Date.now() - session.timestamp < 30 * 60 * 1000) {
+            const payerMember = loaded.members.find((m) => m.id === session.fromMemberId);
+            if (payerMember) {
+              setCurrentMemberId(payerMember.id);
+              setActivePortalType('member');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking stored upi session in root', err);
       }
     }
 

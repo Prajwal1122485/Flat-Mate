@@ -60,6 +60,7 @@ export default function Header({
   };
 
   const isHolderActive = activePortalType === 'holder';
+  const isHolderUser = isHolderActive || (currentMember && currentMember.isHolder);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
@@ -197,7 +198,7 @@ export default function Header({
                     Notifications ({unreadCount} unread)
                   </div>
                   <div className="flex items-center gap-2">
-                    {notifications.length > 0 && onClearAllNotifications && (
+                    {isHolderUser && notifications.length > 0 && onClearAllNotifications && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -243,7 +244,7 @@ export default function Header({
                                 minute: '2-digit',
                               })}
                             </span>
-                            {onDeleteNotification && (
+                            {isHolderUser && onDeleteNotification && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -305,29 +306,33 @@ export default function Header({
                   />
                 </label>
 
-                <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                {isHolderUser && (
+                  <>
+                    <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        'Wipe everything to a blank slate? This resets both your local state and the Firebase Cloud database.'
-                      )
-                    ) {
-                      if (onResetToCompletelyBlank) {
-                        onResetToCompletelyBlank();
-                      } else {
-                        onResetData();
-                      }
-                      setShowMoreMenu(false);
-                    }
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-left font-bold"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>Wipe to Completely Blank</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            'Wipe everything to a blank slate? This resets both your local state and the Firebase Cloud database.'
+                          )
+                        ) {
+                          if (onResetToCompletelyBlank) {
+                            onResetToCompletelyBlank();
+                          } else {
+                            onResetData();
+                          }
+                          setShowMoreMenu(false);
+                        }
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-left font-bold"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Wipe to Completely Blank</span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

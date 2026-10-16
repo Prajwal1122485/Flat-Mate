@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   CreditCard,
   QrCode,
@@ -165,12 +165,26 @@ export default function MemberPortal({
   const [newPersonalDate, setNewPersonalDate] = useState(new Date().toISOString().slice(0, 10));
   const [newPersonalNotes, setNewPersonalNotes] = useState('');
 
-  // Add Chore Modal
+  // Helper to calculate chore due date automatically based on frequency
+  const calculateChoreDueDate = (freq: FlatChore['frequency']): string => {
+    const now = new Date();
+    let daysToAdd = 1;
+    if (freq === 'Daily') daysToAdd = 1;
+    else if (freq === 'A day after') daysToAdd = 2;
+    else if (freq === 'Weekly') daysToAdd = 7;
+    else if (freq === 'Monthly') daysToAdd = 30;
+    else return new Date().toISOString().slice(0, 10);
+
+    const target = new Date(now.getTime() + daysToAdd * 86400000);
+    return target.toISOString().slice(0, 10);
+  };
+
+  // Add Flat Duties & Room Tasks Modal
   const [showAddChoreModal, setShowAddChoreModal] = useState(false);
   const [newChoreTitle, setNewChoreTitle] = useState('');
   const [newChoreAssignedId, setNewChoreAssignedId] = useState(currentMember.id);
-  const [newChoreFrequency, setNewChoreFrequency] = useState<'Daily' | 'Weekly' | 'Bi-Weekly' | 'Monthly'>('Weekly');
-  const [newChoreDueDay, setNewChoreDueDay] = useState('Sunday');
+  const [newChoreFrequency, setNewChoreFrequency] = useState<FlatChore['frequency']>('Weekly');
+  const [newChoreDueDate, setNewChoreDueDate] = useState<string>(() => calculateChoreDueDate('Weekly'));
 
   // Search filter for My Split
   const [splitSearchQuery, setSplitSearchQuery] = useState('');
@@ -202,6 +216,7 @@ export default function MemberPortal({
   // Automated UPI Payment Return & Tracking
   const [pendingUpiSession, setPendingUpiSession] = useState<{
     billId?: string;
+    shareId?: string;
     billTitle: string;
     amount: number;
     fromMemberId: string;
@@ -231,6 +246,7 @@ export default function MemberPortal({
   // Handle initiating UPI payment to track when returning from GPay/PhonePe/Paytm
   const handleInitiateUpiPayment = (params: {
     billId?: string;
+    shareId?: string;
     billTitle: string;
     amount: number;
     recipient: Member;
@@ -238,6 +254,7 @@ export default function MemberPortal({
   }) => {
     const session = {
       billId: params.billId,
+      shareId: params.shareId,
       billTitle: params.billTitle,
       amount: params.amount,
       fromMemberId: currentMember.id,
@@ -301,6 +318,7 @@ export default function MemberPortal({
         fromMemberId: pendingUpiSession.fromMemberId,
         toMemberId: pendingUpiSession.toMemberId,
         amount: pendingUpiSession.amount,
+        shareIds: pendingUpiSession.shareId ? [pendingUpiSession.shareId] : undefined,
         note: `Automated UPI payment for ${pendingUpiSession.billTitle} (${pendingUpiSession.breakdownStr || formatINR(pendingUpiSession.amount)})`,
       });
     }
@@ -321,7 +339,10 @@ export default function MemberPortal({
     setTimeout(() => setPaymentClaimToast(null), 5000);
 
     if (typeof window !== 'undefined') {
-      window.open(waUrl, '_blank');
+      const win = window.open(waUrl, '_blank');
+      if (!win || win.closed || typeof win.closed === 'undefined') {
+        window.location.href = waUrl;
+      }
     }
   };
 
@@ -370,17 +391,73 @@ export default function MemberPortal({
     return shares.filter((s) => s.debtorId === currentMember.id);
   }, [shares, currentMember.id]);
 
+  // Helper to determine if a share is House Rent or recurring house bill
+  const isRentShare = useCallback(
+    (share: ExpenseShare) => {
+      const category = (share.category || '').toLowerCase();
+      const title = (share.expenseTitle || '').toLowerCase();
+      const parentExp = expenseMap.get(share.expenseId);
+      const parentCategory = (parentExp?.category || '').toLowerCase();
+      const parentTitle = (parentExp?.title || '').toLowerCase();
+      return (
+        category === 'rent' ||
+        parentCategory === 'rent' ||
+        title.includes('rent') ||
+        parentTitle.includes('rent')
+      );
+    },
+    [expenseMap]
+  );
+
   const myPendingArrears = useMemo(() => {
-    return myShares.filter((s) => s.status === 'ARREAR' || s.status === 'CLAIMED_PAID');
-  }, [myShares]);
+    return myShares.filter((s) => {
+      if (s.status !== 'ARREAR' && s.status !== 'CLAIMED_PAID') return false;
+
+      // STRICT USER RULE: Rent/recurring house expenses must NEVER appear immediately in Arrear folder!
+      // They only transfer to the Arrear folder strictly 3 days or fewer before the due date AND after WhatsApp message is sent.
+      if (isRentShare(s)) {
+        const matchingBill = recurringBills.find(
+          (b) =>
+            b.category === 'Rent' ||
+            b.title.toLowerCase().includes('rent') ||
+            s.expenseTitle.toLowerCase().includes(b.title.toLowerCase())
+        );
+        if (!matchingBill) return false;
+        const status = getRecurringBillStatus(matchingBill);
+        const reminderDays = matchingBill.reminderDaysBefore || 3;
+        const reminderSent = !!matchingBill.lastReminderSentAt;
+        const isWithin3Days = status.daysRemaining >= 0 && status.daysRemaining <= reminderDays;
+
+        if (!isWithin3Days || !reminderSent) {
+          return false;
+        }
+
+        // If already represented in upcomingDueBillsForMe, don't duplicate
+        if (upcomingDueBillsForMe.some((u) => u.bill.id === matchingBill.id)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [myShares, recurringBills, isRentShare, upcomingDueBillsForMe]);
 
   const mySettledShares = useMemo(() => {
     return myShares.filter((s) => s.status === 'COMPLETED');
   }, [myShares]);
 
+  // Mate-to-mate debts strictly excluding house rent and house recurring bills
+  const matePendingDebts = useMemo(() => {
+    return myPendingArrears.filter((s) => !isRentShare(s));
+  }, [myPendingArrears, isRentShare]);
+
+  const mateSettledShares = useMemo(() => {
+    return mySettledShares.filter((s) => !isRentShare(s));
+  }, [mySettledShares, isRentShare]);
+
   const totalPendingToPay = useMemo(() => {
-    return myPendingArrears.reduce((sum, s) => sum + s.amount, 0);
-  }, [myPendingArrears]);
+    return myPendingArrears.reduce((sum, s) => sum + s.amount, 0) + upcomingBillsTotal;
+  }, [myPendingArrears, upcomingBillsTotal]);
 
   const totalSettled = useMemo(() => {
     return mySettledShares.reduce((sum, s) => sum + s.amount, 0);
@@ -451,10 +528,21 @@ export default function MemberPortal({
     return incomingClaims.filter((c) => c.status === 'PENDING');
   }, [incomingClaims]);
 
-  // Itemized My Split expenses
+  // Itemized My Split expenses: ONLY show expenses that have been paid/settled by the member
   const mySplitsList = useMemo(() => {
     return expenses
       .filter((exp) => exp.splitMemberIds.includes(currentMember.id))
+      .filter((exp) => {
+        // Exclude unpaid expenses: only include if paid by currentMember, completed share, or pre-collected settled
+        const myShare = shares.find(
+          (s) => s.expenseId === exp.id && s.debtorId === currentMember.id
+        );
+        const isPaid =
+          exp.paidById === currentMember.id ||
+          myShare?.status === 'COMPLETED' ||
+          exp.isPreCollectedSettled;
+        return !!isPaid;
+      })
       .filter((exp) => {
         if (splitCategoryFilter !== 'ALL' && exp.category !== splitCategoryFilter) {
           return false;
@@ -469,7 +557,7 @@ export default function MemberPortal({
         }
         return true;
       });
-  }, [expenses, currentMember.id, splitSearchQuery, splitCategoryFilter]);
+  }, [expenses, shares, currentMember.id, splitSearchQuery, splitCategoryFilter]);
 
   const handleDownloadPersonalPDF = () => {
     generateMemberExpensePDF(currentMember, myShares, expenses, allMembers);
@@ -503,7 +591,12 @@ export default function MemberPortal({
         title: newChoreTitle.trim(),
         assignedMemberId: newChoreAssignedId,
         frequency: newChoreFrequency,
-        dueDay: newChoreDueDay,
+        dueDate: newChoreDueDate,
+        dueDay: new Date(newChoreDueDate).toLocaleDateString(undefined, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        }),
         status: 'PENDING',
       });
     }
@@ -873,7 +966,7 @@ export default function MemberPortal({
           <span>Personal Spend ({myPersonalExpenses.length})</span>
         </button>
 
-        {/* 6. Personal Transaction */}
+        {/* 6. Mate Ledger (Excludes House Rent) */}
         <button
           type="button"
           onClick={() => setActiveTab('transactions')}
@@ -884,10 +977,10 @@ export default function MemberPortal({
           }`}
         >
           <ArrowUpDown className="w-4 h-4 text-indigo-500" />
-          <span>Personal Transaction</span>
+          <span>Mate Ledger</span>
         </button>
 
-        {/* 7. Flat Duty Roster & Chores */}
+        {/* 7. Flat Duties & Tasks */}
         <button
           type="button"
           onClick={() => setActiveTab('chores')}
@@ -898,7 +991,7 @@ export default function MemberPortal({
           }`}
         >
           <CheckSquare className="w-4 h-4 text-indigo-500" />
-          <span>Flat Duty Roster &amp; Chores ({chores.length})</span>
+          <span>Flat Duties &amp; Tasks ({chores.length})</span>
         </button>
 
         {/* 8. Flat info (No Wi-Fi) */}
@@ -1200,7 +1293,14 @@ export default function MemberPortal({
                           if (!creditor.upiId) {
                             e.preventDefault();
                             alert(`${creditor.name} has not set a UPI ID yet.`);
+                            return;
                           }
+                          handleInitiateUpiPayment({
+                            shareId: share.id,
+                            billTitle: share.expenseTitle,
+                            amount: share.amount,
+                            recipient: creditor,
+                          });
                         }}
                         className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95"
                       >
@@ -1791,16 +1891,19 @@ export default function MemberPortal({
         </div>
       )}
 
-      {/* ================= TAB 6: PERSONAL TRANSACTION ================= */}
+      {/* ================= TAB 6: MATE DEBT & SETTLEMENT LEDGER ================= */}
       {activeTab === 'transactions' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                Personal Transactions Ledger
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Mate-to-Mate Debt &amp; Settlement Ledger</span>
+                <span className="px-2.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 rounded-full">
+                  House Rent Excluded
+                </span>
               </h2>
               <p className="text-xs text-slate-500">
-                Unified ledger of all pending debts, completed payments, and payments received. Complete debts via UPI/QR or ask via WhatsApp message.
+                Direct 1-on-1 roommate shares and peer debts. House Rent and flat recurring expenses are managed separately in the Arrear and Rent tabs and are strictly excluded from personal ledgers.
               </p>
             </div>
           </div>
@@ -1809,15 +1912,15 @@ export default function MemberPortal({
             {/* 1. Pending to Give section */}
             <div className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400 flex items-center gap-2">
-                <span>Pending to Give ({myPendingArrears.length})</span>
+                <span>Pending to Give ({matePendingDebts.length})</span>
               </h3>
 
-              {myPendingArrears.length === 0 ? (
+              {matePendingDebts.length === 0 ? (
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-500">
-                  No pending debts to pay!
+                  No pending mate debts to pay!
                 </div>
               ) : (
-                myPendingArrears.map((share) => {
+                matePendingDebts.map((share) => {
                   const creditor = memberMap.get(share.creditorId) || holder;
 
                   return (
@@ -1864,7 +1967,14 @@ export default function MemberPortal({
                             if (!creditor.upiId) {
                               e.preventDefault();
                               alert(`${creditor.name} has not configured a UPI ID yet.`);
+                              return;
                             }
+                            handleInitiateUpiPayment({
+                              shareId: share.id,
+                              billTitle: share.expenseTitle,
+                              amount: share.amount,
+                              recipient: creditor,
+                            });
                           }}
                           className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm"
                         >
@@ -1880,10 +1990,10 @@ export default function MemberPortal({
             {/* 2. Completed / Settled section */}
             <div className="space-y-2 pt-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                Completed / Settled ({mySettledShares.length})
+                Completed / Settled ({mateSettledShares.length})
               </h3>
 
-              {mySettledShares.slice(0, 5).map((share) => {
+              {mateSettledShares.slice(0, 5).map((share) => {
                 const creditor = memberMap.get(share.creditorId) || holder;
                 return (
                   <div
@@ -1913,13 +2023,13 @@ export default function MemberPortal({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Flat Duty Roster &amp; Chores</span>
+                <span>Flat Duties &amp; Room Tasks</span>
                 <span className="px-2.5 py-0.5 text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 rounded-full">
                   Fully Changeable
                 </span>
               </h2>
               <p className="text-xs text-slate-500">
-                Weekly accountability for cleaning, garbage disposal, and house maintenance. Add or reassign chores anytime.
+                Easy house tasks for cleaning, kitchen, dustbins, and room maintenance. Add, change due date, or reassign duties anytime.
               </p>
             </div>
 
@@ -1929,7 +2039,7 @@ export default function MemberPortal({
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-md transition-all active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Add / Change Chore</span>
+              <span>+ Add / Change Duty</span>
             </button>
           </div>
 
@@ -1991,7 +2101,7 @@ export default function MemberPortal({
                         <span>&bull;</span>
                         <span>Frequency: {chore.frequency}</span>
                         <span>&bull;</span>
-                        <span>Due: {chore.dueDay}</span>
+                        <span>Due Date: {chore.dueDate || chore.dueDay}</span>
                         {chore.lastCompletedAt && isDone && (
                           <>
                             <span>&bull;</span>
@@ -2460,10 +2570,10 @@ export default function MemberPortal({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                  Add Flat Chore
+                  Add House Duty / Task
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Assign house duty to any roommate
+                  Assign room or flat maintenance duty to any mate
                 </p>
               </div>
               <button
@@ -2478,7 +2588,7 @@ export default function MemberPortal({
             <form onSubmit={handleCreateChore} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Chore Name
+                  Task / Duty Name
                 </label>
                 <input
                   type="text"
@@ -2507,34 +2617,40 @@ export default function MemberPortal({
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
                     Frequency
                   </label>
                   <select
                     value={newChoreFrequency}
-                    onChange={(e) => setNewChoreFrequency(e.target.value as FlatChore['frequency'])}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none"
+                    onChange={(e) => {
+                      const freq = e.target.value as FlatChore['frequency'];
+                      setNewChoreFrequency(freq);
+                      if (freq !== 'Custom') {
+                        setNewChoreDueDate(calculateChoreDueDate(freq));
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="Daily">Daily</option>
+                    <option value="A day after">A day after</option>
                     <option value="Weekly">Weekly</option>
-                    <option value="Bi-Weekly">Bi-Weekly / Alternating</option>
                     <option value="Monthly">Monthly</option>
+                    <option value="Custom">Custom</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                    Due Day / Time
+                    Due Date
                   </label>
                   <input
-                    type="text"
+                    type="date"
                     required
-                    placeholder="e.g. Sunday, Every Morning"
-                    value={newChoreDueDay}
-                    onChange={(e) => setNewChoreDueDay(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none"
+                    value={newChoreDueDate}
+                    onChange={(e) => setNewChoreDueDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
@@ -2551,7 +2667,7 @@ export default function MemberPortal({
                   type="submit"
                   className="py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm"
                 >
-                  Add Chore
+                  Save Duty
                 </button>
               </div>
             </form>

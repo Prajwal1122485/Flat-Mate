@@ -340,12 +340,12 @@ export default function MemberPortal({
               </span>
               {currentMember.isHolder && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                  👑 House Holder Mate
+                  Holder
                 </span>
               )}
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight mt-1">
-              {currentMember.name}&apos;s Dashboard
+              {currentMember.name}
             </h1>
             <p className="text-xs text-slate-300">
               UPI: <code className="text-indigo-300 font-mono">{currentMember.upiId || 'Not set'}</code> &bull; Phone: {currentMember.phone}
@@ -355,16 +355,16 @@ export default function MemberPortal({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
-          {/* Holder Master Shortcut if Prajwal / Holder is logged in */}
+          {/* Holder Shortcut if Holder is logged in */}
           {currentMember.isHolder && onOpenHolderPortal && (
             <button
               type="button"
               onClick={onOpenHolderPortal}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg transition-transform transform active:scale-95"
-              title="Open House Master Ledger & Control Hub"
+              title="Open Holder Portal"
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>Holder Controls</span>
+              <span>Holder</span>
             </button>
           )}
 

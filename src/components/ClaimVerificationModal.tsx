@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { DirectPaymentClaim, Member } from '@/types';
 import { formatINR } from '@/lib/calculations';
-import confetti from 'canvas-confetti';
 
 interface ClaimVerificationModalProps {
   claim: DirectPaymentClaim | null;
@@ -37,15 +36,6 @@ export default function ClaimVerificationModal({
   const senderName = sender?.name || 'A flatmate';
 
   const handleConfirm = () => {
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 60,
-        origin: { y: 0.6 },
-      });
-    } catch {
-      // ignore
-    }
     onConfirmReceived(claim.id);
     onClose();
   };

@@ -40,7 +40,6 @@ import {
 } from '@/lib/calculations';
 import { getAutomatedRentReminders } from '@/lib/whatsappAutomation';
 import { generateHolderMasterAuditPDF } from '@/lib/pdfGenerator';
-import confetti from 'canvas-confetti';
 
 interface HolderPortalProps {
   holder: Member;
@@ -196,13 +195,6 @@ export default function HolderPortal({
   );
 
   const handleQuickSettle = (shareId: string) => {
-    try {
-      confetti({
-        particleCount: 50,
-        spread: 50,
-        origin: { y: 0.7 },
-      });
-    } catch {}
     onSettleShare(shareId);
   };
 
@@ -224,7 +216,7 @@ export default function HolderPortal({
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-            Holder&apos;s Management Portal
+            Holder Portal
           </h1>
           <p className="text-xs sm:text-sm text-slate-300">
             Welcome, <strong>{holder.name}</strong>. House expenses, rent dates, member checks, and settlements are managed here.
@@ -1081,9 +1073,6 @@ export default function HolderPortal({
                         <button
                           type="button"
                           onClick={() => {
-                            try {
-                              confetti({ particleCount: 50 });
-                            } catch {}
                             onConfirmPaymentClaim(claim.id);
                           }}
                           className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm"

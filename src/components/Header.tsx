@@ -66,21 +66,21 @@ export default function Header({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-slate-900 dark:text-white tracking-tight text-base sm:text-lg">
-                FlatMate
+                Flat-Mate
               </span>
               <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                 Register &amp; Splitter
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
-              Rent on 11th &bull; Appliances on 15th &bull; Led by {holder.name} (Holder)
+              Rent on 11th &bull; Appliances on 15th &bull; Flat 304
             </p>
           </div>
         </div>
 
         {/* Action Controls & Top Holder Portal Access */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Top Prominent "Holder's Portal" Access Button */}
+          {/* Top Prominent Holder Access Button */}
           <button
             type="button"
             onClick={onOpenHolderPortal}
@@ -89,10 +89,10 @@ export default function Header({
                 ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-500/40 ring-offset-1'
                 : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800'
             }`}
-            title="Access the Master Holder Portal (Ledger, Expenses, Mates Check)"
+            title="Access the Holder Portal"
           >
             <ShieldCheck className="w-4 h-4 text-indigo-500 dark:text-indigo-400 fill-current" />
-            <span>Holder&apos;s Portal</span>
+            <span>Holder</span>
             {isHolderActive && (
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             )}

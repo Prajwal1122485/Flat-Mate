@@ -53,3 +53,17 @@ body {
 .dark .glass-panel {
   background: rgba(15, 23, 42, 0.85);
 }
+
+/* Smooth realistic float animation for house illustration */
+@keyframes smoothFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-smooth-float {
+  animation: smoothFloat 4s ease-in-out infinite;
+}

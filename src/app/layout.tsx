@@ -14,7 +14,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "FlatMate - Expense Register & Dynamic Splitter",
+  title: "Flat-Mate - Expense Register & Dynamic Splitter",
   description: "Production-ready flat expense ledger, dynamic split engine, WhatsApp reminders, and member portals.",
 };
 

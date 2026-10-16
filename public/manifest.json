@@ -1,0 +1,25 @@
+{
+  "name": "Flat-Mate Expense Register",
+  "short_name": "Flat-Mate",
+  "description": "Flat-Mate Expense Register & Dynamic Splitter for Roommates",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/images/house-illustration.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/house-illustration.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

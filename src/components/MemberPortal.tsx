@@ -822,7 +822,17 @@ export default function MemberPortal({
 
                       {/* Pay via UPI */}
                       <a
-                        href={`upi://pay?pa=${creditor.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(creditor.name)}&am=${share.amount}&cu=INR&tn=${encodeURIComponent(share.expenseTitle)}`}
+                        href={
+                          creditor.upiId
+                            ? `upi://pay?pa=${creditor.upiId}&pn=${encodeURIComponent(creditor.name)}&am=${share.amount}&cu=INR&tn=${encodeURIComponent(share.expenseTitle)}`
+                            : undefined
+                        }
+                        onClick={(e) => {
+                          if (!creditor.upiId) {
+                            e.preventDefault();
+                            alert(`${creditor.name} has not set a UPI ID yet.`);
+                          }
+                        }}
                         className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95"
                       >
                         Pay via UPI
@@ -1065,7 +1075,17 @@ export default function MemberPortal({
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <a
-                          href={`upi://pay?pa=${holder.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(myShare)}&cu=INR&tn=${encodeURIComponent(bill.title)}`}
+                          href={
+                            holder.upiId
+                              ? `upi://pay?pa=${holder.upiId}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(myShare)}&cu=INR&tn=${encodeURIComponent(bill.title)}`
+                              : undefined
+                          }
+                          onClick={(e) => {
+                            if (!holder.upiId) {
+                              e.preventDefault();
+                              alert('Holder has not configured a UPI ID yet. Please check with Holder or view QR.');
+                            }
+                          }}
                           className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
                         >
                           <span>Pay UPI</span>
@@ -1403,7 +1423,17 @@ export default function MemberPortal({
 
                         {/* Pay via UPI */}
                         <a
-                          href={`upi://pay?pa=${creditor.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(creditor.name)}&am=${share.amount}&cu=INR&tn=${encodeURIComponent(share.expenseTitle)}`}
+                          href={
+                            creditor.upiId
+                              ? `upi://pay?pa=${creditor.upiId}&pn=${encodeURIComponent(creditor.name)}&am=${share.amount}&cu=INR&tn=${encodeURIComponent(share.expenseTitle)}`
+                              : undefined
+                          }
+                          onClick={(e) => {
+                            if (!creditor.upiId) {
+                              e.preventDefault();
+                              alert(`${creditor.name} has not configured a UPI ID yet.`);
+                            }
+                          }}
                           className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm"
                         >
                           Pay via UPI
@@ -2325,7 +2355,7 @@ export default function MemberPortal({
             <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs space-y-1">
               <div className="text-slate-500">Holder UPI ID:</div>
               <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 select-all">
-                {holder.upiId || 'prajwal@upi'}
+                {holder.upiId || 'Not set by Holder yet'}
               </div>
             </div>
 
@@ -2333,8 +2363,12 @@ export default function MemberPortal({
               <button
                 type="button"
                 onClick={() => {
-                  navigator.clipboard.writeText(holder.upiId || 'prajwal@upi');
-                  alert('Copied Holder UPI ID to clipboard!');
+                  if (holder.upiId) {
+                    navigator.clipboard.writeText(holder.upiId);
+                    alert('Copied Holder UPI ID to clipboard!');
+                  } else {
+                    alert('Holder has not set a UPI ID yet.');
+                  }
                 }}
                 className="flex-1 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
               >

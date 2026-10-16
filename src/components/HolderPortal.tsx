@@ -150,7 +150,7 @@ export default function HolderPortal({
     return calculateNetBalances(members, shares);
   }, [members, shares]);
 
-  // Crystal clear direct debt summaries ("Rohan has to give ₹X to Prajwal")
+  // Crystal clear direct debt summaries ("Roommate A has to give ₹X to Roommate B")
   const directDebts = useMemo(() => {
     return getDirectDebtSummaries(members, shares);
   }, [members, shares]);
@@ -1567,7 +1567,7 @@ export default function HolderPortal({
                     onClick={() => {
                       if (
                         window.confirm(
-                          'Wipe EVERYTHING back to a pure blank state with only Prajwal (Holder)? This will clear all added roommates, expenses, and bills from both your browser and the Firebase Cloud database.'
+                          'Reset EVERYTHING back to an empty blank slate? This will clear all added expenses, shares, and bills from both your browser and the Firebase Cloud database.'
                         )
                       ) {
                         onResetToCompletelyBlank();
@@ -1576,7 +1576,7 @@ export default function HolderPortal({
                     }}
                     className="px-4 py-2 text-xs font-bold text-red-600 dark:text-red-300 bg-red-100 dark:bg-red-950/60 hover:bg-red-200 dark:hover:bg-red-900/60 rounded-xl border border-red-300 dark:border-red-800 transition-all active:scale-95"
                   >
-                    Wipe Database to Pure Blank (Holder Only)
+                    Reset Database to Blank Slate
                   </button>
                 )}
               </div>

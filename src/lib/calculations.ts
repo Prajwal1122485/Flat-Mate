@@ -193,7 +193,7 @@ export interface DirectDebtSummary {
 
 /**
  * Summarizes exact peer debts into crystal clear, human-understandable records:
- * "Rohan has to give ₹X to Prajwal"
+ * "Roommate A has to give ₹X to Roommate B"
  */
 export function getDirectDebtSummaries(members: Member[], shares: ExpenseShare[]): DirectDebtSummary[] {
   const arrears = shares.filter((s) => s.status === 'ARREAR' || s.status === 'CLAIMED_PAID');

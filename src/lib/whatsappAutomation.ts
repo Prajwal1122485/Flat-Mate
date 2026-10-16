@@ -62,7 +62,8 @@ export function buildWhatsAppReminderUrl(
     timingText = `overdue since ${dueDay}th`;
   }
 
-  const message = `Hi ${debtorName}! Gentle automated reminder from our FlatMate Register 🏠: Your share for "${billTitle}" is ₹${amount}, due ${timingText}. Please transfer to Holder ${holderName} via UPI: ${holderUpi}. If you need more time, you can request an extension in the flat portal. Thank you!`;
+  const upiInfo = holderUpi ? ` via UPI: ${holderUpi}` : '';
+  const message = `Hi ${debtorName}! Gentle automated reminder from Flat-Mate 🏠: Your share for "${billTitle}" is ₹${amount}, due ${timingText}. Please transfer to Holder ${holderName}${upiInfo}. If you need more time, you can request an extension in the flat portal. Thank you!`;
 
   const url = `https://wa.me/${destinationPhone}?text=${encodeURIComponent(message)}`;
   return { url, message };
@@ -113,7 +114,7 @@ export function getAutomatedRentReminders(
           bill.dueDay,
           daysRemaining,
           holder.name,
-          holder.upiId || 'prajwal@upi'
+          holder.upiId || ''
         );
 
         results.push({

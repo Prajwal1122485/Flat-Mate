@@ -216,7 +216,7 @@ export function generateMemberExpensePDF(
 }
 
 /**
- * Generates Master Audit Statement for Holder (Prajwal).
+ * Generates Master Audit Statement for Holder.
  */
 export function generateHolderMasterAuditPDF(
   expenses: Expense[],

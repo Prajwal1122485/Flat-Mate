@@ -123,7 +123,7 @@ export async function pushStateToFirebase(
 }
 
 /**
- * Force-wipes Firestore to a completely blank slate with only Prajwal (Holder).
+ * Force-wipes Firestore to a blank slate with Holder and Prajwal.
  */
 export async function wipeFirestoreToBlank(
   flatId: string = 'flat_304'

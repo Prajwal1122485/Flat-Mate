@@ -715,7 +715,7 @@ export default function Home() {
     updateState((prev) => clearAllTransactionsToEmpty(prev));
   };
 
-  // Wipes all data to completely blank slate with only Prajwal in both LocalStorage & Firebase Cloud
+  // Wipes all data to blank slate with Holder and Prajwal in both LocalStorage & Firebase Cloud
   const handleResetToCompletelyBlank = async () => {
     const blank = await wipeFirestoreToBlank('flat_304');
     setAppState(blank);

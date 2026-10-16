@@ -106,7 +106,7 @@ export default function ProfileSelector({
         passwordInput.trim() === '0000' ||
         isHolderUnlocked
       ) {
-        setAuthenticatedUser({ name: holder.name, isHolder: true, member: holder });
+        setAuthenticatedUser({ name: 'Holder', isHolder: true, member: holder });
         setIsAuthenticating(true);
       } else {
         setHasError(true);
@@ -255,7 +255,7 @@ export default function ProfileSelector({
                     className="w-full px-4 py-3 rounded-2xl bg-slate-800 border border-slate-700 text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none cursor-pointer"
                   >
                     {/* Clean Holder Option */}
-                    <option value="holder">Holder ({holder.name})</option>
+                    <option value="holder">Holder</option>
 
                     {/* Roommates added by user */}
                     {members

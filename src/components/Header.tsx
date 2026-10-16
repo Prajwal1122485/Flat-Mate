@@ -149,7 +149,7 @@ export default function Header({
                 </div>
                 <div className="hidden sm:block text-left">
                   <span className="text-xs font-bold text-slate-900 dark:text-white block leading-none">
-                    {isHolderActive ? "Holder's Master" : currentMember.name}
+                    {isHolderActive ? 'Holder' : currentMember.name}
                   </span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">
                     {isHolderActive ? 'Ledger Controller' : 'Private Portal'}
@@ -277,7 +277,7 @@ export default function Header({
                   onClick={() => {
                     if (
                       confirm(
-                        'Wipe everything to a completely blank slate with only Prajwal (Holder)? This resets both your local state and the Firebase Cloud database.'
+                        'Wipe everything to a blank slate? This resets both your local state and the Firebase Cloud database.'
                       )
                     ) {
                       if (onResetToCompletelyBlank) {

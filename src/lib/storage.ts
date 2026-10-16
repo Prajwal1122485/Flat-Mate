@@ -30,16 +30,26 @@ export interface AppState {
   lastUpdated: string;
 }
 
-const STORAGE_KEY = 'FLATMATE_REGISTER_DATA_V7_PURE_BLANK';
+const STORAGE_KEY = 'FLATMATE_REGISTER_DATA_V8_SEPARATE_HOLDER';
 
-// Completely blank initial slate - only Prajwal (Holder). Roommates added by user.
+// Holder is separate administrative account; Prajwal is a flatmate/roommate
 export const DEFAULT_MEMBERS: Member[] = [
+  {
+    id: 'holder',
+    name: 'Holder',
+    phone: '',
+    upiId: '',
+    isHolder: true,
+    avatarBg: 'bg-amber-600',
+    passcode: '1234',
+    monthlyBudget: undefined,
+  },
   {
     id: 'mem_prajwal',
     name: 'Prajwal',
     phone: '',
     upiId: '',
-    isHolder: true,
+    isHolder: false,
     avatarBg: 'bg-indigo-600',
     passcode: '1234',
     monthlyBudget: undefined,
@@ -127,7 +137,7 @@ export function resetAppState(): AppState {
 }
 
 /**
- * Wipes everything back to a completely blank slate with only Prajwal (Holder).
+ * Wipes everything back to a completely blank slate.
  */
 export function resetToCompletelyBlank(): AppState {
   const blankState = getInitialAppState();

@@ -23,6 +23,7 @@ import {
   KeyRound,
   Shield,
   MessageCircle,
+  QrCode,
 } from 'lucide-react';
 import {
   Member,
@@ -58,6 +59,7 @@ interface HolderPortalProps {
   onUpdateHolderPasscode?: (newPasscode: string) => void;
   onOpenRecordExpense: () => void;
   onOpenRentManager: () => void;
+  onOpenProfileModal?: () => void;
   onOpenCheckModal: (member: Member) => void;
   onOpenEditMember: (member: Member) => void;
   onOpenAddMember: () => void;
@@ -87,6 +89,7 @@ export default function HolderPortal({
   onUpdateHolderPasscode,
   onOpenRecordExpense,
   onOpenRentManager,
+  onOpenProfileModal,
   onOpenCheckModal,
   onOpenEditMember,
   onOpenAddMember,
@@ -263,6 +266,18 @@ export default function HolderPortal({
             <Calendar className="w-4 h-4 text-indigo-400" />
             <span>Rents &amp; Bills</span>
           </button>
+
+          {onOpenProfileModal && (
+            <button
+              type="button"
+              onClick={onOpenProfileModal}
+              className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 font-semibold text-xs border border-slate-700 transition-colors shadow-sm"
+              title="Add or update Holder UPI ID & Payment QR Code"
+            >
+              <QrCode className="w-4 h-4 text-emerald-400" />
+              <span>Holder UPI &amp; QR</span>
+            </button>
+          )}
 
           <button
             type="button"

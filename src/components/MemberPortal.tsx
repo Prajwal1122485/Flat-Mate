@@ -12,6 +12,7 @@ import {
   Sparkles,
   ShieldCheck,
   Plus,
+  PlusCircle,
   Trash2,
   Phone,
   Copy,
@@ -62,6 +63,7 @@ interface MemberPortalProps {
   contacts: FlatContact[];
   notices: FlatNotice[];
   onOpenPayToMates: () => void;
+  onOpenRecordExpense?: () => void;
   onOpenProfileModal: () => void;
   onOpenRequestItem: (prefillTitle?: string, prefillCost?: number) => void;
   onConfirmClaimReceived: (claimId: string) => void;
@@ -94,6 +96,7 @@ export default function MemberPortal({
   contacts,
   notices,
   onOpenPayToMates,
+  onOpenRecordExpense,
   onOpenProfileModal,
   onOpenRequestItem,
   onConfirmClaimReceived,
@@ -369,6 +372,19 @@ export default function MemberPortal({
             >
               <ShieldCheck className="w-4 h-4" />
               <span>Holder</span>
+            </button>
+          )}
+
+          {/* Record New Expense Button (1-to-1, 1-to-all, or selected) */}
+          {onOpenRecordExpense && (
+            <button
+              type="button"
+              onClick={onOpenRecordExpense}
+              className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/30 transition-all transform active:scale-95"
+              title="Record an expense you paid and split with roommates (1-to-1, 1-to-all, or selected)"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Record New Expense</span>
             </button>
           )}
 

@@ -676,7 +676,12 @@ export default function Home() {
   };
 
   // Generate Expense from Recurring Bill
-  const handleGenerateExpenseFromBill = (bill: RecurringBill) => {
+  const handleGenerateExpenseFromBill = (bill: RecurringBill, targetMemberIds?: string[]) => {
+    const splitTargets =
+      targetMemberIds && targetMemberIds.length > 0
+        ? targetMemberIds
+        : bill.splitMemberIds || members.map((m) => m.id);
+
     handleSaveExpense({
       title: `${bill.title} (${new Date().toLocaleString('default', {
         month: 'short',
@@ -685,8 +690,8 @@ export default function Home() {
       category: bill.category,
       paidById: bill.payerId,
       mode: 'split',
-      splitMemberIds: bill.splitMemberIds,
-      notes: `Generated from recurring bill schedule (due on ${bill.dueDay}th)`,
+      splitMemberIds: splitTargets,
+      notes: `Generated from recurring bill schedule (due on ${bill.dueDay}th) • Split among ${splitTargets.length} mates`,
     });
   };
 
@@ -890,6 +895,7 @@ export default function Home() {
             onUpdateHolderPasscode={handleUpdateHolderPasscode}
             onOpenRecordExpense={() => setShowRecordExpense(true)}
             onOpenRentManager={() => setShowRentManager(true)}
+            onOpenProfileModal={() => setShowProfileModal(true)}
             onOpenCheckModal={(mem) => setCheckingMember(mem)}
             onOpenEditMember={(mem) => setEditingMember(mem)}
             onOpenAddMember={() => setShowAddMember(true)}
@@ -924,6 +930,7 @@ export default function Home() {
             contacts={contacts}
             notices={notices}
             onOpenPayToMates={() => setShowPayToMates(true)}
+            onOpenRecordExpense={() => setShowRecordExpense(true)}
             onOpenProfileModal={() => setShowProfileModal(true)}
             onOpenRequestItem={(title, cost) => {
               if (title) setPrefilledItemTitle(title);
@@ -1126,12 +1133,13 @@ export default function Home() {
         onRejectClaim={handleRejectPaymentClaim}
       />
 
-      {/* 4. Record Expense Modal (Holder Only) */}
+      {/* 4. Record Expense Modal */}
       <RecordExpenseModal
         isOpen={showRecordExpense}
         onClose={() => setShowRecordExpense(false)}
         members={members}
         holder={holder}
+        activeMember={currentMember}
         onSaveExpense={handleSaveExpense}
       />
 

@@ -384,7 +384,7 @@ export function generatePurchasedItemsPDF(
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(203, 213, 225);
-  doc.text('Complete Record of Items Bought, Pre-Collected & Split for Flat 304', 14, 23);
+  doc.text('Complete Record of Items Bought, Pre-Collected & Split', 14, 23);
 
   const printDate = new Date().toLocaleDateString('en-IN', {
     day: 'numeric',

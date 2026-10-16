@@ -14,7 +14,7 @@ import { Member } from '@/types';
 interface ProfileSelectorProps {
   members: Member[];
   onSelectMemberPortal: (member: Member) => void;
-  onSelectHolderPortal: (holder: Member) => void;
+  onSelectHolderPortal?: (holder: Member) => void;
   currentMember?: Member;
   onClose?: () => void;
   isModal?: boolean;
@@ -26,17 +26,13 @@ interface ProfileSelectorProps {
 export default function ProfileSelector({
   members,
   onSelectMemberPortal,
-  onSelectHolderPortal,
-  currentMember,
   onClose,
-  isHolderUnlocked = false,
-  holderPasscode = '1234',
   firebaseStatus = 'connected',
 }: ProfileSelectorProps) {
-  const holder = members.find((m) => m.isHolder) || members[0];
+  // Only flatmates (Holder is accessed exclusively via the top Holder icon in the Header)
+  const mates = members.filter((m) => !m.isHolder);
 
-  // Selection states: 'holder' represents Holder portal; otherwise member.id
-  const [selectedTarget, setSelectedTarget] = useState<string>('holder');
+  const [selectedTarget, setSelectedTarget] = useState<string>(mates[0]?.id || '');
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
@@ -54,13 +50,9 @@ export default function ProfileSelector({
   // Directory view toggle
   const [showDirectoryGrid, setShowDirectoryGrid] = useState<boolean>(false);
 
-  // Get currently selected member object
+  // Get currently selected roommate object
   const activeSelectedMember =
-    selectedTarget === 'holder'
-      ? holder
-      : members.find((m) => m.id === selectedTarget) || members[0];
-
-  const isTargetHolder = selectedTarget === 'holder';
+    mates.find((m) => m.id === selectedTarget) || mates[0];
 
   // Professional 2-second progress animation without glitters or confetti
   useEffect(() => {
@@ -79,11 +71,9 @@ export default function ProfileSelector({
       });
     }, intervalTime);
 
-    // After exactly 2.0 seconds, enter the chosen portal
+    // After exactly 2.0 seconds, enter the chosen member portal
     const exitTimer = setTimeout(() => {
-      if (authenticatedUser.isHolder) {
-        onSelectHolderPortal(holder);
-      } else if (authenticatedUser.member) {
+      if (authenticatedUser.member) {
         onSelectMemberPortal(authenticatedUser.member);
       }
       if (onClose) onClose();
@@ -93,7 +83,7 @@ export default function ProfileSelector({
       clearInterval(timer);
       clearTimeout(exitTimer);
     };
-  }, [isAuthenticating, authenticatedUser, holder, onSelectHolderPortal, onSelectMemberPortal, onClose]);
+  }, [isAuthenticating, authenticatedUser, onSelectMemberPortal, onClose]);
 
   // Handle Login Submission
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -101,40 +91,24 @@ export default function ProfileSelector({
     setHasError(false);
     setErrorMessage('');
 
-    if (isTargetHolder) {
-      const correctCode = holderPasscode || '1234';
-      if (
-        passwordInput.trim() === correctCode ||
-        passwordInput.trim() === '0000' ||
-        isHolderUnlocked
-      ) {
-        setAuthenticatedUser({ name: 'Holder', isHolder: true, member: holder });
-        setIsAuthenticating(true);
-      } else {
-        setHasError(true);
-        setErrorMessage('Incorrect password for Holder. Please try again.');
-      }
-    } else {
-      const targetMember = members.find((m) => m.id === selectedTarget);
-      if (!targetMember) return;
+    if (!activeSelectedMember) return;
 
-      const memberExpectedPasscode = targetMember.passcode || '0000';
-      if (
-        passwordInput.trim() === memberExpectedPasscode ||
-        passwordInput.trim() === '0000' ||
-        passwordInput.trim() === '1234' ||
-        passwordInput.trim().length === 4
-      ) {
-        setAuthenticatedUser({
-          name: targetMember.name,
-          isHolder: false,
-          member: targetMember,
-        });
-        setIsAuthenticating(true);
-      } else {
-        setHasError(true);
-        setErrorMessage(`Incorrect password for ${targetMember.name}. Please try again.`);
-      }
+    const memberExpectedPasscode = activeSelectedMember.passcode || '0000';
+    if (
+      passwordInput.trim() === memberExpectedPasscode ||
+      passwordInput.trim() === '0000' ||
+      passwordInput.trim() === '1234' ||
+      passwordInput.trim().length === 4
+    ) {
+      setAuthenticatedUser({
+        name: activeSelectedMember.name,
+        isHolder: false,
+        member: activeSelectedMember,
+      });
+      setIsAuthenticating(true);
+    } else {
+      setHasError(true);
+      setErrorMessage(`Incorrect password for ${activeSelectedMember.name}. Please try again.`);
     }
   };
 
@@ -165,17 +139,15 @@ export default function ProfileSelector({
 
             <div className="space-y-1.5">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-xs font-semibold">
-                <span>Flat 304</span>
-                <span>&bull;</span>
                 <span>Flat-Mate</span>
+                <span>&bull;</span>
+                <span>Roommate Portal</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                 Welcome, {authenticatedUser.name}
               </h2>
               <p className="text-xs text-slate-400">
-                {authenticatedUser.isHolder
-                  ? 'Opening Holder Portal & House Ledger...'
-                  : 'Opening Personal Register & Debts...'}
+                Opening Personal Register &amp; Debts...
               </p>
             </div>
 
@@ -258,206 +230,183 @@ export default function ProfileSelector({
             </div>
 
             {/* Login Form */}
-            <form onSubmit={handleLoginSubmit} className="space-y-4">
-              {/* Profile Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Select Profile</span>
-                  <span className="text-[10px] text-slate-400 font-normal">
-                    {members.length} Registered
-                  </span>
-                </label>
+            {mates.length === 0 ? (
+              <div className="p-5 rounded-2xl bg-slate-800/80 border border-slate-700 text-center space-y-3">
+                <Users className="w-8 h-8 text-slate-400 mx-auto" />
+                <p className="text-sm font-bold text-white">No flatmates registered yet</p>
+                <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                  Access the Holder Portal using the top &quot;Holder&quot; button in the header bar to add roommates and manage house expenses.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
+                {/* Profile Selector */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span>Select Profile</span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      {mates.length} Roommate{mates.length > 1 ? 's' : ''}
+                    </span>
+                  </label>
 
-                <div className="relative">
-                  <select
-                    value={selectedTarget}
-                    onChange={(e) => {
-                      setSelectedTarget(e.target.value);
-                      setPasswordInput('');
-                      setHasError(false);
-                    }}
-                    className="w-full px-4 py-3 rounded-2xl bg-slate-800 border border-slate-700 text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none cursor-pointer"
-                  >
-                    {/* Clean Holder Option */}
-                    <option value="holder">Holder</option>
-
-                    {/* Roommates added by user */}
-                    {members
-                      .filter((m) => !m.isHolder)
-                      .map((m) => (
+                  <div className="relative">
+                    <select
+                      value={selectedTarget}
+                      onChange={(e) => {
+                        setSelectedTarget(e.target.value);
+                        setPasswordInput('');
+                        setHasError(false);
+                      }}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-800 border border-slate-700 text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none cursor-pointer"
+                    >
+                      {mates.map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.name}
                         </option>
                       ))}
-                  </select>
+                    </select>
 
-                  <div className="absolute right-4 top-3.5 pointer-events-none text-slate-400 text-xs">
-                    ▼
-                  </div>
-                </div>
-
-                {members.filter((m) => !m.isHolder).length === 0 && (
-                  <p className="text-[11px] text-indigo-300/80 mt-1.5">
-                    No roommates added yet. Log in as Holder to add roommates and split expenses.
-                  </p>
-                )}
-              </div>
-
-              {/* Active Profile Info */}
-              <div className="p-3 rounded-2xl bg-slate-800/60 border border-slate-800 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md ${
-                      activeSelectedMember.avatarBg || 'bg-indigo-600'
-                    }`}
-                  >
-                    {activeSelectedMember.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-sm">
-                        {isTargetHolder ? 'Holder' : activeSelectedMember.name}
-                      </span>
-                      {isTargetHolder && (
-                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          Admin
-                        </span>
-                      )}
+                    <div className="absolute right-4 top-3.5 pointer-events-none text-slate-400 text-xs">
+                      ▼
                     </div>
-                    <p className="text-[11px] text-slate-400 font-mono">
-                      UPI: {activeSelectedMember.upiId || 'Not set'}
-                    </p>
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-slate-400 block">
-                    Security
-                  </span>
-                  <span className="text-[10px] text-emerald-400 font-semibold">
-                    Protected
-                  </span>
-                </div>
-              </div>
+                {/* Active Profile Info */}
+                {activeSelectedMember && (
+                  <div className="p-3 rounded-2xl bg-slate-800/60 border border-slate-800 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md ${
+                          activeSelectedMember.avatarBg || 'bg-indigo-600'
+                        }`}
+                      >
+                        {activeSelectedMember.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white text-sm">
+                            {activeSelectedMember.name}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-mono">
+                          UPI: {activeSelectedMember.upiId || 'Not set'}
+                        </p>
+                      </div>
+                    </div>
 
-              {/* Password Input */}
-              <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Password
-                </label>
-
-                <div className="relative">
-                  <div className="absolute left-3.5 top-3.5 text-slate-400 pointer-events-none">
-                    <Lock className="w-4 h-4" />
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-slate-400 block">
+                        Security
+                      </span>
+                      <span className="text-[10px] text-emerald-400 font-semibold">
+                        Protected
+                      </span>
+                    </div>
                   </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    autoFocus
-                    placeholder="••••"
-                    value={passwordInput}
-                    onChange={(e) => {
-                      setPasswordInput(e.target.value);
-                      setHasError(false);
-                    }}
-                    className={`w-full pl-10 pr-11 py-3 rounded-2xl bg-slate-800 border text-white font-mono text-center tracking-widest text-lg focus:outline-none focus:ring-2 transition-all ${
-                      hasError
-                        ? 'border-red-500 focus:ring-red-500'
-                        : 'border-slate-700 focus:ring-indigo-500'
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                {hasError && (
-                  <p className="text-xs text-red-400 text-center font-medium mt-1.5">
-                    {errorMessage}
-                  </p>
                 )}
-              </div>
 
-              {/* Sign In Button */}
-              <button
-                type="submit"
-                className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/30 transition-all transform active:scale-95 flex items-center justify-center gap-2"
-              >
-                <span>Enter Portal</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
+                {/* Password Input */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Password
+                  </label>
+
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-3.5 text-slate-400 pointer-events-none">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      autoFocus
+                      placeholder="••••"
+                      value={passwordInput}
+                      onChange={(e) => {
+                        setPasswordInput(e.target.value);
+                        setHasError(false);
+                      }}
+                      className={`w-full pl-10 pr-11 py-3 rounded-2xl bg-slate-800 border text-white font-mono text-center tracking-widest text-lg focus:outline-none focus:ring-2 transition-all ${
+                        hasError
+                          ? 'border-red-500 focus:ring-red-500'
+                          : 'border-slate-700 focus:ring-indigo-500'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  {hasError && (
+                    <p className="text-xs text-red-400 text-center font-medium mt-1.5">
+                      {errorMessage}
+                    </p>
+                  )}
+                </div>
+
+                {/* Sign In Button */}
+                <button
+                  type="submit"
+                  className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/30 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <span>Enter Portal</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+            )}
 
             {/* Quick Profile Directory Toggle */}
-            <div className="pt-2 border-t border-slate-800 text-center">
-              <button
-                type="button"
-                onClick={() => setShowDirectoryGrid(!showDirectoryGrid)}
-                className="text-xs text-slate-400 hover:text-slate-200 transition-colors inline-flex items-center gap-1.5"
-              >
-                <Users className="w-3.5 h-3.5 text-slate-400" />
-                <span>{showDirectoryGrid ? 'Hide Profiles' : 'View All Profiles'}</span>
-              </button>
-            </div>
-
-            {/* Flatmate Quick Directory */}
-            {showDirectoryGrid && (
-              <div className="grid grid-cols-2 gap-2 pt-1 animate-in fade-in duration-150">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedTarget('holder');
-                    setPasswordInput('');
-                    setShowDirectoryGrid(false);
-                  }}
-                  className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all ${
-                    selectedTarget === 'holder'
-                      ? 'border-indigo-500 bg-indigo-500/10 text-white'
-                      : 'border-slate-800 bg-slate-800/40 hover:bg-slate-800 text-slate-300'
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center text-xs font-bold">
-                    H
-                  </div>
-                  <div className="truncate">
-                    <div className="text-xs font-bold truncate">Holder</div>
-                    <div className="text-[10px] text-slate-400">Admin</div>
-                  </div>
-                </button>
-
-                {members.map((m) => (
+            {mates.length > 0 && (
+              <>
+                <div className="pt-2 border-t border-slate-800 text-center">
                   <button
-                    key={m.id}
                     type="button"
-                    onClick={() => {
-                      setSelectedTarget(m.id);
-                      setPasswordInput('');
-                      setShowDirectoryGrid(false);
-                    }}
-                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all ${
-                      selectedTarget === m.id
-                        ? 'border-indigo-500 bg-indigo-500/10 text-white'
-                        : 'border-slate-800 bg-slate-800/40 hover:bg-slate-800 text-slate-300'
-                    }`}
+                    onClick={() => setShowDirectoryGrid(!showDirectoryGrid)}
+                    className="text-xs text-slate-400 hover:text-slate-200 transition-colors inline-flex items-center gap-1.5"
                   >
-                    <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold ${
-                        m.avatarBg || 'bg-slate-700'
-                      }`}
-                    >
-                      {m.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="truncate">
-                      <div className="text-xs font-bold truncate">{m.name}</div>
-                      <div className="text-[10px] text-slate-400">{m.phone}</div>
-                    </div>
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{showDirectoryGrid ? 'Hide Profiles' : 'View All Roommate Profiles'}</span>
                   </button>
-                ))}
-              </div>
+                </div>
+
+                {/* Flatmate Quick Directory */}
+                {showDirectoryGrid && (
+                  <div className="grid grid-cols-2 gap-2 pt-1 animate-in fade-in duration-150">
+                    {mates.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTarget(m.id);
+                          setPasswordInput('');
+                          setShowDirectoryGrid(false);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all ${
+                          selectedTarget === m.id
+                            ? 'border-indigo-500 bg-indigo-500/10 text-white'
+                            : 'border-slate-800 bg-slate-800/40 hover:bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        <div
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold ${
+                            m.avatarBg || 'bg-slate-700'
+                          }`}
+                        >
+                          {m.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="truncate">
+                          <div className="text-xs font-bold truncate">{m.name}</div>
+                          <div className="text-[10px] text-slate-400">{m.phone}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

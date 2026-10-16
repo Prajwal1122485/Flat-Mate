@@ -369,6 +369,11 @@ export default function MemberPortal({
     return mySettledShares.reduce((sum, s) => sum + s.amount, 0);
   }, [mySettledShares]);
 
+  // All-time personal share of house spend till now
+  const totalSharedSpendTillNow = useMemo(() => {
+    return myShares.reduce((sum, s) => sum + s.amount, 0);
+  }, [myShares]);
+
   // Current month personal share of house spend
   const currentMonthSharedSpend = useMemo(() => {
     const now = new Date();
@@ -388,6 +393,11 @@ export default function MemberPortal({
     return personalExpenses.filter((p) => p.memberId === currentMember.id);
   }, [personalExpenses, currentMember.id]);
 
+  // All-time private diary spend till now
+  const totalPrivateSpendTillNow = useMemo(() => {
+    return myPersonalExpenses.reduce((sum, p) => sum + p.amount, 0);
+  }, [myPersonalExpenses]);
+
   const currentMonthPrivateSpend = useMemo(() => {
     const now = new Date();
     const curYear = now.getFullYear();
@@ -401,7 +411,10 @@ export default function MemberPortal({
       .reduce((sum, p) => sum + p.amount, 0);
   }, [myPersonalExpenses]);
 
-  // Combined Monthly Spend = Shared Flat Share + Private Personal Diary
+  // Total Spend Till Now = All Shared House Shares + All Private Diary Records
+  const totalSpendTillNow = totalSharedSpendTillNow + totalPrivateSpendTillNow;
+
+  // Combined Monthly Spend = Shared Flat Share + Private Personal Diary (for monthly budget tracking)
   const totalCombinedMonthlySpend = currentMonthSharedSpend + currentMonthPrivateSpend;
 
   // Monthly Budget (optional, can be Nil / 0)
@@ -694,24 +707,24 @@ export default function MemberPortal({
             <BookOpen className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-            {formatINR(currentMonthPrivateSpend)}
+            {formatINR(totalPrivateSpendTillNow)}
           </div>
           <p className="text-xs text-slate-400">
-            {myPersonalExpenses.length} private records (non-shared)
+            {myPersonalExpenses.length} private records (all-time)
           </p>
         </div>
 
-        {/* Total Combined Spend This Month */}
+        {/* Total Spend Till Now */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-            <span>Total Month Spend</span>
+            <span>Total Spend Till Now</span>
             <Wallet className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-            {formatINR(totalCombinedMonthlySpend)}
+            {formatINR(totalSpendTillNow)}
           </div>
           <p className="text-xs text-slate-400">
-            House ({formatINR(currentMonthSharedSpend)}) + Personal ({formatINR(currentMonthPrivateSpend)})
+            House ({formatINR(totalSharedSpendTillNow)}) + Personal ({formatINR(totalPrivateSpendTillNow)})
           </p>
         </div>
 
@@ -1333,7 +1346,7 @@ export default function MemberPortal({
                   onClick={() => {
                     setRequestingExtensionBill({
                       id: rentDueSoon ? 'rec_rent' : 'rec_appliances',
-                      title: rentDueSoon ? 'House Rent • Flat 304' : 'Washing Machine & Appliances',
+                      title: rentDueSoon ? 'House Rent' : 'Washing Machine & Appliances',
                       amount: rentDueSoon ? 12000 : 500,
                       dueDay: rentDueSoon ? 11 : 15,
                       category: rentDueSoon ? 'Rent' : 'Appliance Rental',

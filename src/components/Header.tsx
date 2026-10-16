@@ -8,6 +8,7 @@ import {
   Upload,
   RefreshCw,
   MoreVertical,
+  Trash2,
 } from 'lucide-react';
 import { Member, HolderNotification } from '@/types';
 
@@ -20,6 +21,8 @@ interface HeaderProps {
   activePortalType?: 'holder' | 'member' | 'gatekeeper';
   notifications: HolderNotification[];
   onMarkNotificationRead: (id: string) => void;
+  onDeleteNotification?: (id: string) => void;
+  onClearAllNotifications?: () => void;
   onExportBackup: () => void;
   onImportBackup: (file: File) => void;
   onResetData: () => void;
@@ -35,6 +38,8 @@ export default function Header({
   activePortalType = 'gatekeeper',
   notifications,
   onMarkNotificationRead,
+  onDeleteNotification,
+  onClearAllNotifications,
   onExportBackup,
   onImportBackup,
   onResetData,
@@ -74,7 +79,7 @@ export default function Header({
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
-              Rent on 11th &bull; Appliances on 15th &bull; Flat 304
+              Rent on 11th &bull; Appliances on 15th
             </p>
           </div>
         </div>
@@ -189,9 +194,26 @@ export default function Header({
               <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 px-2">
                   <div className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                    House Notifications ({unreadCount} unread)
+                    Notifications ({unreadCount} unread)
                   </div>
-                  <span className="text-[10px] text-slate-400">Live Activity</span>
+                  <div className="flex items-center gap-2">
+                    {notifications.length > 0 && onClearAllNotifications && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Clear all notifications?')) {
+                            onClearAllNotifications();
+                          }
+                        }}
+                        className="text-[10px] font-bold text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:underline"
+                        title="Delete all notifications"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                    <span className="text-[10px] text-slate-400">Live</span>
+                  </div>
                 </div>
 
                 <div className="mt-2 space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -204,24 +226,39 @@ export default function Header({
                       <div
                         key={n.id}
                         onClick={() => onMarkNotificationRead(n.id)}
-                        className={`p-2.5 rounded-xl text-xs cursor-pointer transition-colors border ${
+                        className={`p-2.5 rounded-xl text-xs cursor-pointer transition-colors border group relative ${
                           n.read
                             ? 'bg-slate-50/60 dark:bg-slate-800/30 border-slate-200/50 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                             : 'bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900 font-semibold text-slate-900 dark:text-slate-100'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-indigo-600 dark:text-indigo-400 font-bold">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-indigo-600 dark:text-indigo-400 font-bold truncate">
                             {n.title}
                           </span>
-                          <span className="text-[10px] text-slate-400">
-                            {new Date(n.timestamp).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] text-slate-400">
+                              {new Date(n.timestamp).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                            {onDeleteNotification && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteNotification(n.id);
+                                }}
+                                className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                title="Delete this notification"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <p className="mt-1 text-slate-600 dark:text-slate-300 font-normal">
+                        <p className="mt-1 text-slate-600 dark:text-slate-300 font-normal pr-4">
                           {n.message}
                         </p>
                       </div>

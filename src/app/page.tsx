@@ -874,6 +874,22 @@ export default function Home() {
     }));
   };
 
+  // Delete a single notification
+  const handleDeleteNotification = (notifId: string) => {
+    updateState((prev) => ({
+      ...prev,
+      notifications: prev.notifications.filter((n) => n.id !== notifId),
+    }));
+  };
+
+  // Clear all notifications
+  const handleClearAllNotifications = () => {
+    updateState((prev) => ({
+      ...prev,
+      notifications: [],
+    }));
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased">
       {/* Top Header */}
@@ -886,6 +902,8 @@ export default function Home() {
         activePortalType={activePortalType}
         notifications={notifications}
         onMarkNotificationRead={handleMarkNotificationRead}
+        onDeleteNotification={handleDeleteNotification}
+        onClearAllNotifications={handleClearAllNotifications}
         onExportBackup={() => exportBackupJSON(appState)}
         onImportBackup={(file) => {
           importBackupJSON(
@@ -915,9 +933,6 @@ export default function Home() {
               members={members}
               currentMember={currentMember}
               onSelectMemberPortal={handleSelectMemberPortal}
-              onSelectHolderPortal={handleRequestHolderPortal}
-              isHolderUnlocked={isWithinGracePeriod()}
-              holderPasscode={appState.holderPasscode || '1234'}
               firebaseStatus={firebaseStatus}
             />
           </div>

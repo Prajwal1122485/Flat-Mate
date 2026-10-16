@@ -858,6 +858,7 @@ export default function Home() {
             onOpenEditExpense={(exp) => setEditingExpense(exp)}
             onDeleteExpense={handleDeleteExpense}
             onDeletePurchaseRequest={handleDeletePurchaseRequest}
+            onUpdateMember={handleUpdateMember}
           />
         )}
 
@@ -896,6 +897,7 @@ export default function Home() {
             onSettleShare={handleSettleShare}
             onRevertShare={handleRevertShare}
             onOpenHolderPortal={handleRequestHolderPortal}
+            onUpdateMember={handleUpdateMember}
           />
         )}
       </main>

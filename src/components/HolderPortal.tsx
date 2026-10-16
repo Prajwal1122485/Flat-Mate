@@ -22,6 +22,7 @@ import {
   Lock,
   KeyRound,
   Shield,
+  MessageCircle,
 } from 'lucide-react';
 import {
   Member,
@@ -37,6 +38,7 @@ import {
   getRecurringBillStatus,
   getDirectDebtSummaries,
 } from '@/lib/calculations';
+import { getAutomatedRentReminders } from '@/lib/whatsappAutomation';
 import { generateHolderMasterAuditPDF } from '@/lib/pdfGenerator';
 import confetti from 'canvas-confetti';
 
@@ -64,6 +66,7 @@ interface HolderPortalProps {
   onDeleteExpense?: (expenseId: string) => void;
   onDeleteShare?: (shareId: string) => void;
   onDeletePurchaseRequest?: (requestId: string) => void;
+  onUpdateMember?: (updated: Member) => void;
 }
 
 export default function HolderPortal({
@@ -90,6 +93,7 @@ export default function HolderPortal({
   onDeleteExpense,
   onDeleteShare,
   onDeletePurchaseRequest,
+  onUpdateMember,
 }: HolderPortalProps) {
   const [activeTab, setActiveTab] = useState<'mates' | 'expenses' | 'arrears' | 'completed' | 'requests' | 'matrix' | 'security'>('mates');
   const [arrearFilter, setArrearFilter] = useState<'all' | 'owedToMe' | 'owedByMe' | string>('all');
@@ -143,6 +147,11 @@ export default function HolderPortal({
   const directDebts = useMemo(() => {
     return getDirectDebtSummaries(members, shares);
   }, [members, shares]);
+
+  // Automated WhatsApp Rent reminders (active within 3 days before 11th or 15th)
+  const automatedReminders = useMemo(() => {
+    return getAutomatedRentReminders(recurringBills, members, shares, holder);
+  }, [recurringBills, members, shares, holder]);
 
   // Active Arrears
   const activeArrears = useMemo(() => {
@@ -340,6 +349,70 @@ export default function HolderPortal({
           >
             Review &amp; Verify Now
           </button>
+        </div>
+      )}
+
+      {/* 3 Days Before Rent — Automated WhatsApp Reminders Active */}
+      {automatedReminders.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-indigo-500/15 border-2 border-amber-400/60 shadow-lg space-y-3 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-lg shadow-md shrink-0">
+                ⏰
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    Rent Due in 3 Days — Automated WhatsApp Reminders
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white uppercase tracking-wider">
+                    Automated
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  {automatedReminders.length} roommate{automatedReminders.length > 1 ? 's have' : ' has'} pending rent. Click below to notify them on WhatsApp automatically.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                automatedReminders.forEach((r, idx) => {
+                  setTimeout(() => window.open(r.whatsappUrl, '_blank'), idx * 500);
+                });
+              }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Send WhatsApp to All ({automatedReminders.length})</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-2 border-t border-amber-300/30">
+            {automatedReminders.map((rem) => (
+              <div
+                key={`${rem.billId}_${rem.debtor.id}`}
+                className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs shadow-sm"
+              >
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white">{rem.debtor.name}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {rem.billTitle} &bull; <strong className="text-red-500">{formatINR(rem.amount)}</strong>
+                  </div>
+                </div>
+                <a
+                  href={rem.whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 font-bold hover:bg-emerald-100 transition-colors"
+                >
+                  <MessageCircle className="w-3 h-3 text-emerald-600" />
+                  <span>WhatsApp</span>
+                </a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1295,6 +1368,61 @@ export default function HolderPortal({
                 Update Password
               </button>
             </form>
+          </div>
+
+          {/* Flatmate Credentials & Passwords Management (Holder Authority) */}
+          <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Roommate Names &amp; Passwords
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Holder master authority: View and change any roommate&apos;s name and login password.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {members.map((m) => (
+                <div
+                  key={m.id}
+                  className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between gap-3 text-xs"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs ${m.avatarBg || 'bg-indigo-600'}`}>
+                      {m.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span>{m.name}</span>
+                        {m.isHolder && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
+                            Holder
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        Password: <span className="font-bold text-indigo-500">{m.passcode || (m.isHolder ? holderPasscode || '1234' : '0000')}</span> &bull; {m.phone}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpenEditMember(m)}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 font-bold transition-colors"
+                  >
+                    Change Name / Password
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 space-y-1.5">

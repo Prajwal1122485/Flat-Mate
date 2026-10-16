@@ -1,12 +1,18 @@
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
-import { AppState, saveAppState } from './storage';
+import { AppState, saveAppState, loadAppState } from './storage';
 
 const DOC_ID = 'flat_ledger_state';
 const COLLECTION_NAME = 'flats';
 
+let isCloudConnected = false;
+
+export function isFirebaseLive(): boolean {
+  return isFirebaseConfigured() && isCloudConnected;
+}
+
 /**
- * Subscribes to real-time updates from Firestore if configured.
+ * Subscribes to real-time updates from Firestore.
  * When other flatmates make payments or changes, state updates across all phones instantly.
  */
 export function subscribeToFirebaseSync(
@@ -19,12 +25,25 @@ export function subscribeToFirebaseSync(
 
   try {
     const flatDocRef = doc(db, COLLECTION_NAME, flatId, 'state', DOC_ID);
+
+    // Check if cloud document exists; if not, initialize cloud with local state
+    getDoc(flatDocRef).then((snap) => {
+      if (!snap.exists()) {
+        const localState = loadAppState();
+        setDoc(flatDocRef, {
+          ...localState,
+          lastUpdated: new Date().toISOString(),
+        }).catch((e) => console.warn('Cloud initial seed notice:', e.message));
+      }
+    }).catch((e) => console.warn('Cloud reachability check:', e.message));
+
     const unsubscribe = onSnapshot(
       flatDocRef,
       (snapshot) => {
+        isCloudConnected = true;
         if (snapshot.exists()) {
           const remoteData = snapshot.data() as AppState;
-          if (remoteData && remoteData.members) {
+          if (remoteData && remoteData.members && remoteData.members.length > 0) {
             saveAppState(remoteData);
             onUpdate(remoteData);
           }
@@ -32,6 +51,7 @@ export function subscribeToFirebaseSync(
       },
       (error) => {
         console.warn('Firestore sync listener notice:', error.message);
+        isCloudConnected = false;
       }
     );
 
@@ -59,7 +79,8 @@ export async function pushStateToFirebase(
       ...state,
       lastUpdated: new Date().toISOString(),
     });
+    isCloudConnected = true;
   } catch (err) {
-    console.error('Failed to sync state to Firestore:', err);
+    console.warn('Notice syncing state to Firestore:', err);
   }
 }

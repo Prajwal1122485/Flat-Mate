@@ -24,6 +24,7 @@ import {
   AlertCircle,
   ArrowUpDown,
   Search,
+  Lock,
 } from 'lucide-react';
 import {
   Member,
@@ -72,6 +73,7 @@ interface MemberPortalProps {
   onSettleShare?: (shareId: string) => void;
   onRevertShare?: (shareId: string) => void;
   onOpenHolderPortal?: () => void;
+  onUpdateMember?: (updated: Member) => void;
 }
 
 export default function MemberPortal({
@@ -103,6 +105,7 @@ export default function MemberPortal({
   onSettleShare,
   onRevertShare,
   onOpenHolderPortal,
+  onUpdateMember,
 }: MemberPortalProps) {
   // 10 Tabs matching exact user requirements
   const [activeTab, setActiveTab] = useState<
@@ -139,6 +142,21 @@ export default function MemberPortal({
 
   // Copied indicator for phone numbers
   const [copiedContactId, setCopiedContactId] = useState<string | null>(null);
+
+  // Set Budget Modal (Dedicated Self-Contained Portal)
+  const [showSetBudgetModal, setShowSetBudgetModal] = useState(false);
+  const [budgetInputValue, setBudgetInputValue] = useState(
+    currentMember.monthlyBudget ? currentMember.monthlyBudget.toString() : ''
+  );
+
+  // Rent Extension Request Modal (Self-Contained inside Rent)
+  const [requestingExtensionBill, setRequestingExtensionBill] = useState<RecurringBill | null>(null);
+  const [extensionDays, setExtensionDays] = useState<number>(3);
+  const [extensionReason, setExtensionReason] = useState<string>('Salary credit delayed by a few days');
+  const [extensionSuccessMsg, setExtensionSuccessMsg] = useState(false);
+
+  // QR Code viewing modal inside Rent
+  const [showHolderQrForRent, setShowHolderQrForRent] = useState(false);
 
   const holder = allMembers.find((m) => m.isHolder) || allMembers[0];
   const memberMap = useMemo(() => new Map(allMembers.map((m) => [m.id, m])), [allMembers]);
@@ -372,6 +390,20 @@ export default function MemberPortal({
             <span>Request Item</span>
           </button>
 
+          {/* Dedicated Set My Monthly Budget Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setBudgetInputValue(currentMember.monthlyBudget ? currentMember.monthlyBudget.toString() : '');
+              setShowSetBudgetModal(true);
+            }}
+            className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-400/40 transition-colors shadow-sm"
+            title="Configure your personal monthly budget & savings goal"
+          >
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>Set My Budget</span>
+          </button>
+
           {/* Profile & Payment Setup */}
           <button
             type="button"
@@ -501,10 +533,22 @@ export default function MemberPortal({
                 Nil / Not Set
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                No monthly spending limit configured. Click profile icon to set a goal.
+                No monthly spending limit configured. Click below to set a goal.
               </p>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setBudgetInputValue(currentMember.monthlyBudget ? currentMember.monthlyBudget.toString() : '');
+              setShowSetBudgetModal(true);
+            }}
+            className="w-full mt-2 py-1.5 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{hasBudgetSet ? 'Change Monthly Budget' : 'Set My Monthly Budget'}</span>
+          </button>
         </div>
       </div>
 
@@ -847,14 +891,24 @@ export default function MemberPortal({
                       </div>
 
                       {onRevertShare && (
-                        <button
-                          type="button"
-                          onClick={() => onRevertShare(share.id)}
-                          className="px-2.5 py-1 text-xs font-semibold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
-                          title="Undo settlement and return to Arrears"
-                        >
-                          Mark as Pending (Undo)
-                        </button>
+                        share.creditorId === holder.id && !currentMember.isHolder ? (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs font-semibold"
+                            title="This payment was received by the House Holder and cannot be reverted by roommates"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-amber-500" />
+                            <span>Holder Verified</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onRevertShare(share.id)}
+                            className="px-2.5 py-1 text-xs font-semibold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
+                            title="Undo settlement and return to Arrears"
+                          >
+                            Mark as Pending (Undo)
+                          </button>
+                        )
                       )}
                     </div>
                   </div>
@@ -876,6 +930,59 @@ export default function MemberPortal({
               Schedule for Flat Rent (11th of month) and Washing Machine / Appliances (15th of month) with deposit logistics.
             </p>
           </div>
+
+          {/* Automated 3-Day Rent Due Alert Banner */}
+          {(() => {
+            const today = new Date().getDate();
+            const rentDueSoon = today >= 8 && today <= 11;
+            const applianceDueSoon = today >= 12 && today <= 15;
+            if (!rentDueSoon && !applianceDueSoon) return null;
+            const dueDaysLeft = rentDueSoon ? 11 - today : 15 - today;
+            const targetBillTitle = rentDueSoon ? 'House Rent (Due 11th)' : 'Washing Machine Rent (Due 15th)';
+
+            return (
+              <div className="p-4 rounded-3xl bg-amber-500/10 border-2 border-amber-500/40 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-lg shrink-0">
+                    ⏰
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-amber-950 dark:text-amber-100">
+                      Automated 3-Day Notice: {targetBillTitle} is due {dueDaysLeft === 0 ? 'Today!' : `in ${dueDaysLeft} day(s)`}!
+                    </div>
+                    <p className="text-xs text-amber-800 dark:text-amber-300">
+                      Please clear your share with {holder.name} or request extra time below to keep house books balanced.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRequestingExtensionBill({
+                      id: rentDueSoon ? 'rec_rent' : 'rec_appliances',
+                      title: rentDueSoon ? 'House Rent • Flat 304' : 'Washing Machine & Appliances',
+                      amount: rentDueSoon ? 12000 : 500,
+                      dueDay: rentDueSoon ? 11 : 15,
+                      category: rentDueSoon ? 'Rent' : 'Appliance Rental',
+                      splitMemberIds: allMembers.map((m) => m.id),
+                      reminderDaysBefore: 3,
+                      payerId: holder.id,
+                    });
+                  }}
+                  className="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl shadow-sm transition-transform active:scale-95 whitespace-nowrap"
+                >
+                  Request Time Extension
+                </button>
+              </div>
+            );
+          })()}
+
+          {extensionSuccessMsg && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Extension request sent to Holder {holder.name} via WhatsApp successfully!</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Flat Rent Card */}
@@ -912,20 +1019,52 @@ export default function MemberPortal({
                 </p>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div>
-                  <div className="text-xs text-slate-500">Your Share (Regular Rent):</div>
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-slate-500">Your Regular Share:</div>
                   <div className="text-base font-black text-slate-900 dark:text-white">
                     {formatINR(12000 / (allMembers.length || 1))} / mate
                   </div>
                 </div>
 
-                <a
-                  href={`upi://pay?pa=${holder.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(holder.name)}&am=${12000 / (allMembers.length || 1)}&cu=INR&tn=Flat%20Rent`}
-                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95"
-                >
-                  Pay Rent via UPI
-                </a>
+                {/* Self-contained actions inside Rent */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <a
+                    href={`upi://pay?pa=${holder.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(12000 / (allMembers.length || 1))}&cu=INR&tn=Flat%20Rent`}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
+                  >
+                    <span>Pay UPI</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowHolderQrForRent(true)}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Show QR</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRequestingExtensionBill({
+                        id: 'rec_rent',
+                        title: 'House Rent • Flat 304',
+                        amount: 12000,
+                        dueDay: 11,
+                        category: 'Rent',
+                        splitMemberIds: allMembers.map((m) => m.id),
+                        reminderDaysBefore: 3,
+                        payerId: holder.id,
+                      });
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 rounded-xl transition-colors"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Ask Time</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -962,20 +1101,52 @@ export default function MemberPortal({
                 </p>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div>
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
                   <div className="text-xs text-slate-500">Your Share:</div>
                   <div className="text-base font-black text-slate-900 dark:text-white">
                     {formatINR(500 / (allMembers.length || 1))} / mate
                   </div>
                 </div>
 
-                <a
-                  href={`upi://pay?pa=${holder.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(holder.name)}&am=${500 / (allMembers.length || 1)}&cu=INR&tn=Washing%20Machine%20Rent`}
-                  className="px-4 py-2 text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-500 rounded-xl shadow-sm transition-transform active:scale-95"
-                >
-                  Pay via UPI
-                </a>
+                {/* Self-contained actions inside Rent */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <a
+                    href={`upi://pay?pa=${holder.upiId || 'prajwal@upi'}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(500 / (allMembers.length || 1))}&cu=INR&tn=Washing%20Machine%20Rent`}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
+                  >
+                    <span>Pay UPI</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowHolderQrForRent(true)}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Show QR</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRequestingExtensionBill({
+                        id: 'rec_appliances',
+                        title: 'Washing Machine & Appliances',
+                        amount: 500,
+                        dueDay: 15,
+                        category: 'Appliance Rental',
+                        splitMemberIds: allMembers.map((m) => m.id),
+                        reminderDaysBefore: 3,
+                        payerId: holder.id,
+                      });
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 rounded-xl transition-colors"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Ask Time</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1986,6 +2157,261 @@ export default function MemberPortal({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: SET MY MONTHLY BUDGET ================= */}
+      {showSetBudgetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-500" />
+                  <span>Set My Monthly Budget</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Configure your personal monthly spending target &amp; savings goal
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSetBudgetModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Quick Preset Buttons */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-2">
+                Quick Choose Budget
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Nil (No Limit)', value: '0' },
+                  { label: '₹1,000', value: '1000' },
+                  { label: '₹2,000', value: '2000' },
+                  { label: '₹5,000', value: '5000' },
+                  { label: '₹8,000', value: '8000' },
+                  { label: '₹12,000', value: '12000' },
+                ].map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => setBudgetInputValue(preset.value)}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-colors ${
+                      budgetInputValue === preset.value
+                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Input */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                Or Enter Custom Amount (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                placeholder="e.g. 3500 (Enter 0 for Nil / No budget)"
+                value={budgetInputValue}
+                onChange={(e) => setBudgetInputValue(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Enter 0 or leave empty if you don&apos;t want any monthly budget cap.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSetBudgetModal(false)}
+                className="py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const val = parseFloat(budgetInputValue) || 0;
+                  if (onUpdateMember) {
+                    onUpdateMember({
+                      ...currentMember,
+                      monthlyBudget: val > 0 ? val : undefined,
+                    });
+                  }
+                  setShowSetBudgetModal(false);
+                }}
+                className="py-2.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl shadow-sm transition-colors"
+              >
+                Save Budget
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: RENT EXTENSION REQUEST ================= */}
+      {requestingExtensionBill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Request Time to Pay
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {requestingExtensionBill.title} &bull; Notify {holder.name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRequestingExtensionBill(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs">
+              Your share: <strong className="text-indigo-600 dark:text-indigo-400 font-bold">{formatINR(requestingExtensionBill.amount / (allMembers.length || 1))}</strong> due on the {requestingExtensionBill.dueDay}th.
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                Select Extra Days Needed
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {[3, 5, 7, 10].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setExtensionDays(d)}
+                    className={`py-2 text-xs font-bold rounded-xl border transition-colors ${
+                      extensionDays === d
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    +{d} Days
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                Reason / Note for Holder
+              </label>
+              <input
+                type="text"
+                value={extensionReason}
+                onChange={(e) => setExtensionReason(e.target.value)}
+                placeholder="e.g. Salary delayed by 3 days, bank server issue, etc."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRequestingExtensionBill(null)}
+                className="py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const holderPhone = holder.phone.replace(/[^0-9]/g, '');
+                  const cleanPhone = holderPhone.length === 10 ? '91' + holderPhone : holderPhone;
+                  const myShare = Math.round(requestingExtensionBill.amount / (allMembers.length || 1));
+                  const msg = `Hi ${holder.name}, this is ${currentMember.name}.\nI would like to request an extension of ${extensionDays} days to pay my share of ₹${myShare} for "${requestingExtensionBill.title}".\nReason: ${extensionReason || 'Personal delay'}.\nThank you!`;
+                  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+                  window.open(waUrl, '_blank');
+                  setRequestingExtensionBill(null);
+                  setExtensionSuccessMsg(true);
+                  setTimeout(() => setExtensionSuccessMsg(false), 4000);
+                }}
+                className="py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>Send via WhatsApp</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: SHOW HOLDER QR & UPI ================= */}
+      {showHolderQrForRent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 text-center space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Holder Payment QR &amp; UPI
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowHolderQrForRent(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 dark:border-slate-700 inline-block shadow-inner">
+              {holder.qrCodeUrl ? (
+                <img
+                  src={holder.qrCodeUrl}
+                  alt={`${holder.name} QR Code`}
+                  className="w-48 h-48 object-contain mx-auto rounded-lg"
+                />
+              ) : (
+                <div className="w-48 h-48 flex flex-col items-center justify-center bg-slate-50 text-slate-400 rounded-lg">
+                  <QrCode className="w-16 h-16 mb-2 text-slate-300" />
+                  <span className="text-xs">UPI QR Code</span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs space-y-1">
+              <div className="text-slate-500">Holder UPI ID:</div>
+              <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 select-all">
+                {holder.upiId || 'prajwal@upi'}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(holder.upiId || 'prajwal@upi');
+                  alert('Copied Holder UPI ID to clipboard!');
+                }}
+                className="flex-1 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Copy UPI ID
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowHolderQrForRent(false)}
+                className="flex-1 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

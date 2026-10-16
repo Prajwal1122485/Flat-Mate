@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, UserCog, Trash2, Plus, Phone, CreditCard, Shield, User } from 'lucide-react';
+import { X, UserCog, Trash2, Plus, Phone, CreditCard, Shield, User, Lock } from 'lucide-react';
 import { Member } from '@/types';
 
 interface EditMemberModalProps {
@@ -38,6 +38,7 @@ export default function EditMemberModal({
   const [phone, setPhone] = useState('');
   const [upiId, setUpiId] = useState('');
   const [budget, setBudget] = useState('');
+  const [passcode, setPasscode] = useState('');
   const [avatarBg, setAvatarBg] = useState('bg-indigo-600');
 
   useEffect(() => {
@@ -46,12 +47,14 @@ export default function EditMemberModal({
       setPhone(member.phone || '');
       setUpiId(member.upiId || '');
       setBudget(member.monthlyBudget ? member.monthlyBudget.toString() : '');
+      setPasscode(member.passcode || (member.isHolder ? '1234' : '0000'));
       setAvatarBg(member.avatarBg || 'bg-indigo-600');
     } else {
       setName('');
       setPhone('');
       setUpiId('');
       setBudget('');
+      setPasscode('0000');
       setAvatarBg(AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]);
     }
   }, [member, isOpen]);
@@ -74,6 +77,7 @@ export default function EditMemberModal({
         isHolder: false,
         avatarBg,
         monthlyBudget: finalBudget,
+        passcode: passcode.trim() || '0000',
       };
       onAddNewMember(newM);
     } else if (member) {
@@ -84,6 +88,7 @@ export default function EditMemberModal({
         upiId: upiId.trim(),
         avatarBg,
         monthlyBudget: finalBudget,
+        passcode: passcode.trim() || '0000',
       });
     }
 
@@ -148,6 +153,26 @@ export default function EditMemberModal({
                 className="w-full pl-9 pr-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
+              Login Password / PIN *
+            </label>
+            <div className="relative">
+              <Lock className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                required
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+                placeholder="4-digit PIN or password (default: 0000)"
+                className="w-full pl-9 pr-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">
+              The Holder has master authority to change any roommate&apos;s password here.
+            </p>
           </div>
 
           <div>

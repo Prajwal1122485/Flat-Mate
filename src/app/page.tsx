@@ -864,6 +864,7 @@ export default function Home() {
               onSelectHolderPortal={handleRequestHolderPortal}
               isHolderUnlocked={isWithinGracePeriod()}
               holderPasscode={appState.holderPasscode || '1234'}
+              firebaseStatus={firebaseStatus}
             />
           </div>
         )}

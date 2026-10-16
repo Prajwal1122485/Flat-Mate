@@ -29,7 +29,7 @@ interface HeaderProps {
 
 export default function Header({
   currentMember,
-  allMembers,
+  allMembers: _allMembers,
   onOpenHolderPortal,
   onExitPortal,
   activePortalType = 'gatekeeper',
@@ -45,7 +45,6 @@ export default function Header({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
-  const holder = allMembers.find((m) => m.isHolder) || allMembers[0];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -56,7 +55,6 @@ export default function Header({
   };
 
   const isHolderActive = activePortalType === 'holder';
-  const isMemberActive = activePortalType === 'member';
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">

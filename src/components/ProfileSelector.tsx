@@ -20,6 +20,7 @@ interface ProfileSelectorProps {
   isModal?: boolean;
   isHolderUnlocked?: boolean;
   holderPasscode?: string;
+  firebaseStatus?: 'connected' | 'connecting' | 'error' | 'unconfigured';
 }
 
 export default function ProfileSelector({
@@ -30,6 +31,7 @@ export default function ProfileSelector({
   onClose,
   isHolderUnlocked = false,
   holderPasscode = '1234',
+  firebaseStatus = 'connected',
 }: ProfileSelectorProps) {
   const holder = members.find((m) => m.isHolder) || members[0];
 
@@ -219,9 +221,31 @@ export default function ProfileSelector({
                     <span>&bull;</span>
                     <span>Expense Register</span>
                   </div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Firebase Live</span>
+                  <div
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-sm transition-all ${
+                      firebaseStatus === 'connected'
+                        ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+                        : firebaseStatus === 'connecting'
+                        ? 'bg-amber-950/70 border-amber-500/40 text-amber-300'
+                        : 'bg-rose-950/70 border-rose-500/40 text-rose-300'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        firebaseStatus === 'connected'
+                          ? 'bg-emerald-400 animate-pulse'
+                          : firebaseStatus === 'connecting'
+                          ? 'bg-amber-400 animate-ping'
+                          : 'bg-rose-400'
+                      }`}
+                    />
+                    <span>
+                      {firebaseStatus === 'connected'
+                        ? 'Firebase Live'
+                        : firebaseStatus === 'connecting'
+                        ? 'Connecting Cloud...'
+                        : 'Offline DB'}
+                    </span>
                   </div>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">

@@ -1,5 +1,5 @@
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase';
+import { db, getFirebaseDb, isFirebaseConfigured, firebaseConfig } from './firebase';
 import { AppState, saveAppState, loadAppState, getInitialAppState } from './storage';
 
 const DOC_ID = 'flat_ledger_state';
@@ -34,6 +34,52 @@ function broadcastStatus(status: FirebaseSyncStatus, errorMsg: string | null = n
 }
 
 /**
+ * Actively tests connection to Firebase Firestore and returns diagnostics.
+ */
+export async function testFirebaseConnection(
+  flatId: string = 'flat_304'
+): Promise<{
+  ok: boolean;
+  latencyMs?: number;
+  projectId?: string;
+  docExists?: boolean;
+  memberCount?: number;
+  error?: string;
+}> {
+  if (!isFirebaseConfigured()) {
+    broadcastStatus('unconfigured', 'Firebase configuration missing');
+    return { ok: false, error: 'Firebase configuration missing API Key or Project ID' };
+  }
+
+  const startTime = Date.now();
+  try {
+    const firestore = db || getFirebaseDb();
+    const flatDocRef = doc(firestore, COLLECTION_NAME, flatId, 'state', DOC_ID);
+    const snap = await getDoc(flatDocRef);
+    const latencyMs = Date.now() - startTime;
+
+    broadcastStatus('connected');
+    const data = snap.exists() ? (snap.data() as AppState) : null;
+
+    return {
+      ok: true,
+      latencyMs,
+      projectId: firebaseConfig.projectId,
+      docExists: snap.exists(),
+      memberCount: data?.members?.length || 0,
+    };
+  } catch (err: any) {
+    const errorMsg = err?.message || 'Connection failed';
+    broadcastStatus('error', errorMsg);
+    return {
+      ok: false,
+      projectId: firebaseConfig.projectId,
+      error: errorMsg,
+    };
+  }
+}
+
+/**
  * Subscribes to real-time updates from Firestore.
  * When other flatmates make payments or changes, state updates across all phones instantly.
  */
@@ -42,7 +88,22 @@ export function subscribeToFirebaseSync(
   onUpdate: (state: AppState) => void,
   onStatusChange?: (status: FirebaseSyncStatus, errorMsg?: string) => void
 ): () => void {
-  if (!isFirebaseConfigured() || !db) {
+  if (!isFirebaseConfigured()) {
+    broadcastStatus('unconfigured');
+    onStatusChange?.('unconfigured');
+    return () => {};
+  }
+
+  let firestore;
+  try {
+    firestore = db || getFirebaseDb();
+  } catch (e: any) {
+    broadcastStatus('error', e?.message);
+    onStatusChange?.('error', e?.message);
+    return () => {};
+  }
+
+  if (!firestore) {
     broadcastStatus('unconfigured');
     onStatusChange?.('unconfigured');
     return () => {};
@@ -52,9 +113,9 @@ export function subscribeToFirebaseSync(
   onStatusChange?.('connecting');
 
   try {
-    const flatDocRef = doc(db, COLLECTION_NAME, flatId, 'state', DOC_ID);
+    const flatDocRef = doc(firestore, COLLECTION_NAME, flatId, 'state', DOC_ID);
 
-    // Initial existence check
+    // Initial existence check & instant hydration via getDoc
     getDoc(flatDocRef)
       .then((snap) => {
         if (!snap.exists()) {
@@ -63,7 +124,16 @@ export function subscribeToFirebaseSync(
             ...localState,
             lastUpdated: new Date().toISOString(),
           }).catch((e) => console.warn('Cloud initial seed notice:', e.message));
+        } else {
+          // Immediately apply remote data so user doesn't wait
+          const remoteData = snap.data() as AppState;
+          if (remoteData && remoteData.members && remoteData.members.length > 0) {
+            saveAppState(remoteData);
+            onUpdate(remoteData);
+          }
         }
+        broadcastStatus('connected');
+        onStatusChange?.('connected');
       })
       .catch((e) => {
         console.warn('Cloud reachability check:', e.message);
@@ -105,12 +175,15 @@ export async function pushStateToFirebase(
   state: AppState,
   flatId: string = 'flat_304'
 ): Promise<void> {
-  if (!isFirebaseConfigured() || !db) {
+  if (!isFirebaseConfigured()) {
     return;
   }
 
   try {
-    const flatDocRef = doc(db, COLLECTION_NAME, flatId, 'state', DOC_ID);
+    const firestore = db || getFirebaseDb();
+    if (!firestore) return;
+
+    const flatDocRef = doc(firestore, COLLECTION_NAME, flatId, 'state', DOC_ID);
     await setDoc(flatDocRef, {
       ...state,
       lastUpdated: new Date().toISOString(),
@@ -131,11 +204,14 @@ export async function wipeFirestoreToBlank(
   const blankState: AppState = getInitialAppState();
   saveAppState(blankState);
 
-  if (isFirebaseConfigured() && db) {
+  if (isFirebaseConfigured()) {
     try {
-      const flatDocRef = doc(db, COLLECTION_NAME, flatId, 'state', DOC_ID);
-      await setDoc(flatDocRef, blankState);
-      broadcastStatus('connected');
+      const firestore = db || getFirebaseDb();
+      if (firestore) {
+        const flatDocRef = doc(firestore, COLLECTION_NAME, flatId, 'state', DOC_ID);
+        await setDoc(flatDocRef, blankState);
+        broadcastStatus('connected');
+      }
     } catch (err: any) {
       console.warn('Error wiping Firestore to blank:', err);
       broadcastStatus('error', err?.message);

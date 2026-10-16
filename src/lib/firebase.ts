@@ -2,10 +2,10 @@
 // Seamlessly syncs FlatMate Register data across devices in real-time
 // Connected to user's Firebase Project: flatmate-register
 
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyB2nCkDt1zHTRjy_KxT0_pKlJMbDd9QkEo",
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "flatmate-register.firebaseapp.com",
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "flatmate-register",
@@ -19,16 +19,25 @@ export const isFirebaseConfigured = (): boolean => {
   return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 };
 
+export function getFirebaseApp(): FirebaseApp {
+  if (!getApps().length) {
+    return initializeApp(firebaseConfig);
+  }
+  return getApp();
+}
+
+export function getFirebaseDb(): Firestore {
+  return getFirestore(getFirebaseApp());
+}
+
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 
-if (typeof window !== 'undefined') {
-  try {
-    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(app);
-  } catch (err) {
-    console.warn('Firebase initialization notice:', err);
-  }
+try {
+  app = getFirebaseApp();
+  db = getFirebaseDb();
+} catch (err) {
+  console.warn('Firebase initialization notice:', err);
 }
 
 export { app, db };

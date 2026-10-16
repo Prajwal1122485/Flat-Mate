@@ -44,6 +44,7 @@ import {
   generatePurchasedItemsPDF,
   generatePurchasedItemsCSV,
 } from '@/lib/pdfGenerator';
+import { testFirebaseConnection } from '@/lib/firebaseSync';
 
 interface HolderPortalProps {
   holder: Member;
@@ -115,6 +116,15 @@ export default function HolderPortal({
   // Passcode change state
   const [newPasscode, setNewPasscode] = useState('');
   const [passcodeSuccess, setPasscodeSuccess] = useState(false);
+
+  // Live Database Diagnostics State
+  const [testingDb, setTestingDb] = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<{
+    ok: boolean;
+    latencyMs?: number;
+    projectId?: string;
+    error?: string;
+  } | null>(null);
 
   // Metrics
   const totalSpentViaHolder = useMemo(() => {
@@ -1508,23 +1518,102 @@ export default function HolderPortal({
           </div>
 
           {/* Firebase Real-Time Cloud Status Card */}
-          <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg">
-                🔥
+          <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg">
+                  🔥
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>Firebase Cloud Database</span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${
+                        firebaseStatus === 'connected'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : firebaseStatus === 'connecting'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          firebaseStatus === 'connected'
+                            ? 'bg-emerald-500 animate-pulse'
+                            : firebaseStatus === 'connecting'
+                            ? 'bg-amber-500 animate-ping'
+                            : 'bg-rose-500'
+                        }`}
+                      />
+                      {firebaseStatus === 'connected'
+                        ? 'Connected & Live'
+                        : firebaseStatus === 'connecting'
+                        ? 'Connecting...'
+                        : 'Offline / Error'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Project: <code className="text-indigo-400 font-mono">flatmate-register</code> &bull; Real-time synchronization active.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>Firebase Cloud Database</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold">
-                    Connected &amp; Live
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Project: <code className="text-indigo-400 font-mono">flatmate-register</code> &bull; All entries and roommate modifications sync instantly across all flatmates&apos; devices.
-                </p>
-              </div>
+
+              {/* Active Test Connection Button */}
+              <button
+                type="button"
+                disabled={testingDb}
+                onClick={async () => {
+                  setTestingDb(true);
+                  try {
+                    const result = await testFirebaseConnection('flat_304');
+                    setDbTestResult(result);
+                  } catch (e: any) {
+                    setDbTestResult({ ok: false, error: e?.message });
+                  } finally {
+                    setTestingDb(false);
+                  }
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {testingDb ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                    <span>Pinging Database...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>⚡ Test Live Connection</span>
+                  </>
+                )}
+              </button>
             </div>
+
+            {/* Test Connection Results Banner */}
+            {dbTestResult && (
+              <div
+                className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+                  dbTestResult.ok
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                    : 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                }`}
+              >
+                <div>
+                  <span className="font-bold">
+                    {dbTestResult.ok ? '✓ Connection Verified:' : '✗ Connection Notice:'}
+                  </span>{' '}
+                  {dbTestResult.ok
+                    ? `Successfully reached Firestore project "${dbTestResult.projectId || 'flatmate-register'}". Document state verified with ${dbTestResult.latencyMs}ms latency.`
+                    : `Could not reach database: ${dbTestResult.error}`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDbTestResult(null)}
+                  className="text-[11px] font-bold underline opacity-70 hover:opacity-100 ml-2"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Clean Slate / Start Fresh Empty Register */}

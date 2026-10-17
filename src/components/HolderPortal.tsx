@@ -2239,7 +2239,7 @@ export default function HolderPortal({
                         )}
                       </div>
                       <div className="text-[11px] text-slate-500 font-mono">
-                        Password: <span className="font-bold text-indigo-500">{m.passcode || (m.isHolder ? holderPasscode || '1234' : '0000')}</span> &bull; {m.phone}
+                        Password: <span className="font-bold text-indigo-500">{m.passcode || (m.isHolder ? holderPasscode || '1234' : '1234')}</span> &bull; {m.phone}
                       </div>
                     </div>
                   </div>

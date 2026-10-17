@@ -47,14 +47,14 @@ export default function EditMemberModal({
       setPhone(member.phone || '');
       setUpiId(member.upiId || '');
       setBudget(member.monthlyBudget ? member.monthlyBudget.toString() : '');
-      setPasscode(member.passcode || (member.isHolder ? '1234' : '0000'));
+      setPasscode(member.passcode || '1234');
       setAvatarBg(member.avatarBg || 'bg-indigo-600');
     } else {
       setName('');
       setPhone('');
       setUpiId('');
       setBudget('');
-      setPasscode('0000');
+      setPasscode('1234');
       setAvatarBg(AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]);
     }
   }, [member, isOpen]);
@@ -77,7 +77,7 @@ export default function EditMemberModal({
         isHolder: false,
         avatarBg,
         monthlyBudget: finalBudget,
-        passcode: passcode.trim() || '0000',
+        passcode: passcode.trim() || '1234',
       };
       onAddNewMember(newM);
     } else if (member) {
@@ -88,7 +88,7 @@ export default function EditMemberModal({
         upiId: upiId.trim(),
         avatarBg,
         monthlyBudget: finalBudget,
-        passcode: passcode.trim() || '0000',
+        passcode: passcode.trim() || '1234',
       });
     }
 
@@ -166,7 +166,7 @@ export default function EditMemberModal({
                 required
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                placeholder="4-digit PIN or password (default: 0000)"
+                placeholder="4-digit PIN or password (default: 1234)"
                 className="w-full pl-9 pr-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
               />
             </div>

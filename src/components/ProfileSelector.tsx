@@ -79,13 +79,8 @@ export default function ProfileSelector({
 
     if (!activeSelectedMember) return;
 
-    const memberExpectedPasscode = activeSelectedMember.passcode || '0000';
-    if (
-      passwordInput.trim() === memberExpectedPasscode ||
-      passwordInput.trim() === '0000' ||
-      passwordInput.trim() === '1234' ||
-      passwordInput.trim().length === 4
-    ) {
+    const memberExpectedPasscode = (activeSelectedMember.passcode || '1234').trim();
+    if (passwordInput.trim() === memberExpectedPasscode) {
       setAuthenticatedUser({
         name: activeSelectedMember.name,
         isHolder: false,

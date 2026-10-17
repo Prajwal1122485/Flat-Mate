@@ -323,8 +323,8 @@ export default function Home() {
 
   const handleVerifyHolderPasscode = (e: React.FormEvent) => {
     e.preventDefault();
-    const correctCode = appState.holderPasscode || '1234';
-    if (passcodeInput.trim() === correctCode || passcodeInput.trim() === '0000') {
+    const correctCode = (appState.holderPasscode || '1234').trim();
+    if (passcodeInput.trim() === correctCode) {
       setHolderUnlocked(true);
       setHolderExitedTimestamp(null);
       setShowPasscodeModal(false);

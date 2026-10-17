@@ -2,14 +2,13 @@
 
 import React, { useState } from 'react';
 import {
+  ShieldCheck,
   Bell,
   Download,
   Upload,
   RefreshCw,
   MoreVertical,
   Trash2,
-  Lock,
-  ArrowLeft,
 } from 'lucide-react';
 import { Member, HolderNotification } from '@/types';
 
@@ -19,8 +18,7 @@ interface HeaderProps {
   onSelectMember?: (member: Member) => void;
   onOpenHolderPortal: () => void;
   onExitPortal: () => void;
-  onOpenLogin?: () => void;
-  activePortalType?: 'landing' | 'holder' | 'member' | 'gatekeeper';
+  activePortalType?: 'holder' | 'member' | 'gatekeeper';
   notifications: HolderNotification[];
   onMarkNotificationRead: (id: string) => void;
   onDeleteNotification?: (id: string) => void;
@@ -35,9 +33,9 @@ interface HeaderProps {
 export default function Header({
   currentMember,
   allMembers: _allMembers,
+  onOpenHolderPortal,
   onExitPortal,
-  onOpenLogin,
-  activePortalType = 'landing',
+  activePortalType = 'gatekeeper',
   notifications,
   onMarkNotificationRead,
   onDeleteNotification,
@@ -51,15 +49,21 @@ export default function Header({
   const [showNotifDrawer, setShowNotifDrawer] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  // Filter notifications: if inside member portal, only show notifications directed to this member.
-  const visibleNotifications =
-    activePortalType === 'holder'
-      ? notifications
-      : activePortalType === 'member'
-      ? notifications.filter(
-          (n) => n.toMemberId === currentMember.id || n.targetMemberId === currentMember.id
-        )
-      : [];
+  const isHolderActive = activePortalType === 'holder';
+  const isMemberActive = activePortalType === 'member';
+  const isLoggedIn = isHolderActive || isMemberActive;
+
+  // STRICT SECURITY:
+  // On starting page (gatekeeper), 0 notifications are visible.
+  // In member portal, only notifications addressed to this member are visible.
+  // In holder portal, all notifications are visible.
+  const visibleNotifications = isHolderActive
+    ? notifications
+    : isMemberActive
+    ? notifications.filter(
+        (n) => n.toMemberId === currentMember.id || n.targetMemberId === currentMember.id
+      )
+    : [];
 
   const unreadCount = visibleNotifications.filter((n) => !n.read).length;
 
@@ -71,23 +75,11 @@ export default function Header({
     setShowMoreMenu(false);
   };
 
-  // STRICT SECURITY RULE:
-  // Holder powers (Clear All, Delete, Wipe to Completely Blank) are ONLY granted
-  // when actively authenticated inside the Holder Portal ('holder').
-  const isHolderActive = activePortalType === 'holder';
-  const isMemberActive = activePortalType === 'member';
-  const isLoggedIn = isHolderActive || isMemberActive;
-
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Brand Logo & Subtitle */}
-        <div
-          onClick={() => {
-            if (!isLoggedIn) onExitPortal();
-          }}
-          className={`flex items-center gap-3 ${!isLoggedIn ? 'cursor-pointer' : ''}`}
-        >
+        <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white flex items-center justify-center font-black text-lg shadow-md shadow-indigo-500/20">
             ₹
           </div>
@@ -106,7 +98,7 @@ export default function Header({
           </div>
         </div>
 
-        {/* Action Controls & Top Navigation */}
+        {/* Action Controls & Top Holder Portal Access */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Live Firebase Database Connection Indicator */}
           <div
@@ -143,31 +135,25 @@ export default function Header({
             </span>
           </div>
 
-          {/* 1. PUBLIC LANDING PAGE: Show Glowing Login Button */}
-          {activePortalType === 'landing' && onOpenLogin && (
-            <button
-              type="button"
-              onClick={onOpenLogin}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-black rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition-all transform active:scale-95"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Login</span>
-            </button>
-          )}
+          {/* Top Prominent Holder Access Button */}
+          <button
+            type="button"
+            onClick={onOpenHolderPortal}
+            className={`inline-flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm transform active:scale-95 ${
+              isHolderActive
+                ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-500/40 ring-offset-1'
+                : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800'
+            }`}
+            title="Access the Holder Portal"
+          >
+            <ShieldCheck className="w-4 h-4 text-indigo-500 dark:text-indigo-400 fill-current" />
+            <span>Holder</span>
+            {isHolderActive && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            )}
+          </button>
 
-          {/* 2. GATEKEEPER / LOGIN SCREEN: Show Back to Home Button */}
-          {activePortalType === 'gatekeeper' && (
-            <button
-              type="button"
-              onClick={onExitPortal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Home</span>
-            </button>
-          )}
-
-          {/* 3. AUTHENTICATED USER BADGE & EXIT (Strictly after logging in as Member or Holder) */}
+          {/* Active Profile Info & Strict Lock/Exit Portal Button (Shown only when inside a portal) */}
           {isLoggedIn && (
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
               <div className="flex items-center gap-2 px-2 py-1">
@@ -183,7 +169,7 @@ export default function Header({
                     {isHolderActive ? 'Holder' : currentMember.name}
                   </span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {isHolderActive ? 'Master Ledger' : 'Private Portal'}
+                    {isHolderActive ? 'Ledger Controller' : 'Private Portal'}
                   </span>
                 </div>
               </div>
@@ -193,14 +179,14 @@ export default function Header({
                 type="button"
                 onClick={onExitPortal}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                title="Lock portal and return to Home"
+                title="Lock portal and return to FlatMate Directory"
               >
                 <span>Exit</span>
               </button>
             </div>
           )}
 
-          {/* 4. NOTIFICATIONS BELL: ONLY VISIBLE WHEN LOGGED IN AS HOLDER OR MEMBER */}
+          {/* STRICT SECURITY: NOTIFICATIONS BELL IS ONLY VISIBLE TO LOGGED-IN USERS */}
           {isLoggedIn && (
             <div className="relative">
               <button
@@ -225,7 +211,7 @@ export default function Header({
                       Notifications ({unreadCount} unread)
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* STRICT SECURITY: "Clear All" is ONLY shown to the Holder inside Holder Portal */}
+                      {/* STRICT SECURITY: Clear All is ONLY available to Holder inside Holder Portal */}
                       {isHolderActive && visibleNotifications.length > 0 && onClearAllNotifications && (
                         <button
                           type="button"
@@ -272,7 +258,7 @@ export default function Header({
                                   minute: '2-digit',
                                 })}
                               </span>
-                              {/* STRICT SECURITY: Delete notification is ONLY shown to the Holder inside Holder Portal */}
+                              {/* STRICT SECURITY: Delete notification is ONLY available to Holder inside Holder Portal */}
                               {isHolderActive && onDeleteNotification && (
                                 <button
                                   type="button"
@@ -300,14 +286,14 @@ export default function Header({
             </div>
           )}
 
-          {/* 5. DATABASE TOOLS MENU: ONLY VISIBLE WHEN LOGGED IN AS HOLDER OR MEMBER */}
+          {/* STRICT SECURITY: TOOLS & BACKUP MENU IS ONLY VISIBLE TO LOGGED-IN USERS */}
           {isLoggedIn && (
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
                 className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                title="Tools & Backup"
+                title="Database Backup & Utilities"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>
@@ -326,7 +312,7 @@ export default function Header({
                     <span>Download Backup (JSON)</span>
                   </button>
 
-                  {/* Restore from backup: Only Holder */}
+                  {/* Restore from Backup: Only Holder */}
                   {isHolderActive && (
                     <label className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-left cursor-pointer">
                       <Upload className="w-4 h-4 text-slate-500" />
@@ -340,7 +326,7 @@ export default function Header({
                     </label>
                   )}
 
-                  {/* STRICT SECURITY: "Wipe to Completely Blank" is ONLY visible inside Holder Portal */}
+                  {/* STRICT SECURITY: Wipe to Completely Blank is ONLY visible inside Holder Portal */}
                   {isHolderActive && (
                     <>
                       <div className="my-1 border-t border-slate-100 dark:border-slate-800" />

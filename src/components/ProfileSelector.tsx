@@ -16,7 +16,6 @@ interface ProfileSelectorProps {
   onSelectMemberPortal: (member: Member) => void;
   onSelectHolderPortal?: (holder: Member) => void;
   onOpenHolderPortal?: () => void;
-  onBackToLanding?: () => void;
   currentMember?: Member;
   onClose?: () => void;
   isModal?: boolean;
@@ -29,7 +28,6 @@ export default function ProfileSelector({
   members,
   onSelectMemberPortal,
   onOpenHolderPortal,
-  onBackToLanding,
   onClose,
   firebaseStatus = 'connected',
 }: ProfileSelectorProps) {
@@ -394,31 +392,19 @@ export default function ProfileSelector({
               </>
             )}
 
-            {/* Bottom Actions: Back to Home & Secure Holder Access */}
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2 text-xs">
-              {onBackToLanding ? (
-                <button
-                  type="button"
-                  onClick={onBackToLanding}
-                  className="text-slate-400 hover:text-slate-200 transition-colors inline-flex items-center gap-1 font-semibold"
-                >
-                  <span>← Back to Home</span>
-                </button>
-              ) : (
-                <div />
-              )}
-
-              {onOpenHolderPortal && (
+            {/* Bottom Actions: Secure Holder Access */}
+            {onOpenHolderPortal && (
+              <div className="pt-3 border-t border-slate-800 text-center">
                 <button
                   type="button"
                   onClick={onOpenHolderPortal}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-all font-bold inline-flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-all font-bold inline-flex items-center gap-1.5 text-xs"
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>Holder Master Vault</span>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
       </div>

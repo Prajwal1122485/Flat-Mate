@@ -125,6 +125,29 @@ export function getInitialAppState(): AppState {
   };
 }
 
+export const HOLDER_PASSCODE_KEY = 'FLATMATE_HOLDER_MASTER_PASSCODE';
+
+export function getStoredHolderPasscode(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const code = localStorage.getItem(HOLDER_PASSCODE_KEY);
+    return code && code.trim() ? code.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredHolderPasscode(code: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (code && code.trim()) {
+      localStorage.setItem(HOLDER_PASSCODE_KEY, code.trim());
+    }
+  } catch (err) {
+    console.error('Failed to save holder passcode to local storage', err);
+  }
+}
+
 export function loadAppState(): AppState {
   if (typeof window === 'undefined') {
     return getInitialAppState();
@@ -132,17 +155,50 @@ export function loadAppState(): AppState {
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
+    const dedicatedPasscode = getStoredHolderPasscode();
+
     if (!raw) {
       const initial = getInitialAppState();
+      if (dedicatedPasscode) {
+        initial.holderPasscode = dedicatedPasscode;
+        initial.members = initial.members.map((m) =>
+          m.isHolder || m.id === 'holder' ? { ...m, passcode: dedicatedPasscode } : m
+        );
+      }
       saveAppState(initial);
       return initial;
     }
+
     const parsed = JSON.parse(raw);
     const initial = getInitialAppState();
+
+    const holderMem = (parsed.members || []).find(
+      (m: Member) => m.isHolder || m.id === 'holder'
+    );
+
+    // Prioritize dedicated stored passcode or non-default custom passcode (e.g. '8792')
+    const effectivePasscode =
+      (dedicatedPasscode && dedicatedPasscode.trim()) ||
+      (parsed.holderPasscode && parsed.holderPasscode.trim() !== '1234'
+        ? parsed.holderPasscode.trim()
+        : null) ||
+      (holderMem?.passcode && holderMem.passcode.trim() !== '1234'
+        ? holderMem.passcode.trim()
+        : null) ||
+      (parsed.holderPasscode && parsed.holderPasscode.trim()) ||
+      (holderMem?.passcode && holderMem.passcode.trim()) ||
+      '1234';
+
+    // Keep holder member's passcode and appState.holderPasscode 100% in sync
+    const mergedMembers = (parsed.members && parsed.members.length > 0 ? parsed.members : initial.members).map(
+      (m: Member) => (m.isHolder || m.id === 'holder' ? { ...m, passcode: effectivePasscode } : m)
+    );
+
     return {
       ...initial,
       ...parsed,
-      holderPasscode: parsed.holderPasscode || '1234',
+      holderPasscode: effectivePasscode,
+      members: mergedMembers,
       personalExpenses: parsed.personalExpenses || [],
       pantryItems: parsed.pantryItems || [],
       chores: parsed.chores || [],
@@ -160,6 +216,9 @@ export function saveAppState(state: AppState): void {
   if (typeof window === 'undefined') return;
   try {
     state.lastUpdated = new Date().toISOString();
+    if (state.holderPasscode && state.holderPasscode.trim()) {
+      setStoredHolderPasscode(state.holderPasscode.trim());
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     // Dispatch custom event for reactive tabs
     window.dispatchEvent(new Event('flatmate-storage-update'));

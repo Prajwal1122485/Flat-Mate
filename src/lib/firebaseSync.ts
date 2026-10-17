@@ -1,6 +1,6 @@
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { db, getFirebaseDb, isFirebaseConfigured, firebaseConfig } from './firebase';
-import { AppState, saveAppState, loadAppState, getInitialAppState } from './storage';
+import { AppState, saveAppState, loadAppState, getInitialAppState, getStoredHolderPasscode } from './storage';
 
 const DOC_ID = 'flat_ledger_state';
 const COLLECTION_NAME = 'flats';
@@ -133,6 +133,22 @@ export function subscribeToFirebaseSync(
           // Immediately apply remote data so user doesn't wait
           const remoteData = snap.data() as AppState;
           if (remoteData && remoteData.members && remoteData.members.length > 0) {
+            const dedicatedPasscode = getStoredHolderPasscode();
+            const holderMem = remoteData.members.find((m) => m.isHolder || m.id === 'holder');
+            const activePasscode =
+              (dedicatedPasscode && dedicatedPasscode !== '1234')
+                ? dedicatedPasscode
+                : (remoteData.holderPasscode && remoteData.holderPasscode !== '1234')
+                ? remoteData.holderPasscode
+                : (holderMem?.passcode && holderMem.passcode !== '1234')
+                ? holderMem.passcode
+                : (remoteData.holderPasscode || dedicatedPasscode || '1234');
+
+            remoteData.holderPasscode = activePasscode;
+            remoteData.members = remoteData.members.map((m) =>
+              m.isHolder || m.id === 'holder' ? { ...m, passcode: activePasscode } : m
+            );
+
             saveAppState(remoteData);
             onUpdate(remoteData);
           }
@@ -152,6 +168,22 @@ export function subscribeToFirebaseSync(
         if (snapshot.exists()) {
           const remoteData = snapshot.data() as AppState;
           if (remoteData && remoteData.members && remoteData.members.length > 0) {
+            const dedicatedPasscode = getStoredHolderPasscode();
+            const holderMem = remoteData.members.find((m) => m.isHolder || m.id === 'holder');
+            const activePasscode =
+              (dedicatedPasscode && dedicatedPasscode !== '1234')
+                ? dedicatedPasscode
+                : (remoteData.holderPasscode && remoteData.holderPasscode !== '1234')
+                ? remoteData.holderPasscode
+                : (holderMem?.passcode && holderMem.passcode !== '1234')
+                ? holderMem.passcode
+                : (remoteData.holderPasscode || dedicatedPasscode || '1234');
+
+            remoteData.holderPasscode = activePasscode;
+            remoteData.members = remoteData.members.map((m) =>
+              m.isHolder || m.id === 'holder' ? { ...m, passcode: activePasscode } : m
+            );
+
             saveAppState(remoteData);
             onUpdate(remoteData);
           }

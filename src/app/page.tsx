@@ -40,6 +40,8 @@ import {
   clearAllTransactionsToEmpty,
   exportBackupJSON,
   importBackupJSON,
+  getStoredHolderPasscode,
+  setStoredHolderPasscode,
 } from '@/lib/storage';
 import {
   subscribeToFirebaseSync,
@@ -323,8 +325,23 @@ export default function Home() {
 
   const handleVerifyHolderPasscode = (e: React.FormEvent) => {
     e.preventDefault();
-    const correctCode = (appState.holderPasscode || '1234').trim();
-    if (passcodeInput.trim() === correctCode) {
+    const storedCode = getStoredHolderPasscode();
+    const holderMem = appState.members.find((m) => m.isHolder || m.id === 'holder');
+    const correctCode = (
+      (storedCode && storedCode.trim()) ||
+      (appState.holderPasscode && appState.holderPasscode.trim()) ||
+      (holderMem?.passcode && holderMem.passcode.trim()) ||
+      '1234'
+    );
+
+    const entered = passcodeInput.trim();
+    const isMatch =
+      entered === correctCode ||
+      (appState.holderPasscode && entered === appState.holderPasscode.trim()) ||
+      (holderMem?.passcode && entered === holderMem.passcode.trim()) ||
+      (storedCode && entered === storedCode.trim());
+
+    if (isMatch) {
       setHolderUnlocked(true);
       setHolderExitedTimestamp(null);
       setShowPasscodeModal(false);
@@ -356,9 +373,15 @@ export default function Home() {
 
   // Update Holder Passcode
   const handleUpdateHolderPasscode = (newCode: string) => {
+    const cleanCode = newCode.trim();
+    if (!cleanCode) return;
+    setStoredHolderPasscode(cleanCode);
     updateState((prev) => ({
       ...prev,
-      holderPasscode: newCode,
+      holderPasscode: cleanCode,
+      members: prev.members.map((m) =>
+        m.isHolder || m.id === 'holder' ? { ...m, passcode: cleanCode } : m
+      ),
     }));
   };
 
@@ -1076,9 +1099,16 @@ export default function Home() {
 
   // Update Member
   const handleUpdateMember = (updated: Member) => {
+    const isHolder = updated.isHolder || updated.id === 'holder';
+    if (isHolder && updated.passcode && updated.passcode.trim()) {
+      setStoredHolderPasscode(updated.passcode.trim());
+    }
     updateState((prev) => ({
       ...prev,
       members: prev.members.map((m) => (m.id === updated.id ? updated : m)),
+      ...(isHolder && updated.passcode && updated.passcode.trim()
+        ? { holderPasscode: updated.passcode.trim() }
+        : {}),
     }));
   };
 
@@ -1423,7 +1453,12 @@ export default function Home() {
             paymentClaims={paymentClaims}
             contacts={contacts}
             peerTransfers={appState.peerTransfers || []}
-            holderPasscode={appState.holderPasscode || '1234'}
+            holderPasscode={
+              getStoredHolderPasscode() ||
+              appState.holderPasscode ||
+              holder.passcode ||
+              '1234'
+            }
             onUpdateHolderPasscode={handleUpdateHolderPasscode}
             onOpenRecordExpense={() => setShowRecordExpense(true)}
             onOpenRentManager={() => setShowRentManager(true)}

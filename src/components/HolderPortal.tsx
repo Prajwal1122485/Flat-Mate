@@ -2152,8 +2152,11 @@ export default function HolderPortal({
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Change Master Holder Password
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Enter a new secret password for the Holder portal.
+                <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+                  <span>Current master password:</span>
+                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                    {holderPasscode}
+                  </span>
                 </p>
               </div>
             </div>
@@ -2239,7 +2242,7 @@ export default function HolderPortal({
                         )}
                       </div>
                       <div className="text-[11px] text-slate-500 font-mono">
-                        Password: <span className="font-bold text-indigo-500">{m.passcode || (m.isHolder ? holderPasscode || '1234' : '1234')}</span> &bull; {m.phone}
+                        Password: <span className="font-bold text-indigo-500">{m.isHolder ? (holderPasscode || m.passcode || '1234') : (m.passcode || '1234')}</span> &bull; {m.phone}
                       </div>
                     </div>
                   </div>

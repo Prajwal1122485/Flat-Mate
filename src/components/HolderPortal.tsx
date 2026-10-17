@@ -26,6 +26,9 @@ import {
   QrCode,
   Phone,
   Plus,
+  CheckSquare,
+  Square,
+  ClipboardList,
 } from 'lucide-react';
 import {
   Member,
@@ -36,6 +39,8 @@ import {
   DirectPaymentClaim,
   FlatContact,
   PeerTransferRequest,
+  FlatChore,
+  ChoreFrequency,
 } from '@/types';
 import {
   formatINR,
@@ -48,7 +53,7 @@ import {
 import {
   generateHolderMasterAuditPDF,
   generatePurchasedItemsPDF,
-  generatePurchasedItemsCSV,
+  generateDutyRosterPDF,
 } from '@/lib/pdfGenerator';
 import { testFirebaseConnection } from '@/lib/firebaseSync';
 
@@ -62,6 +67,11 @@ interface HolderPortalProps {
   paymentClaims: DirectPaymentClaim[];
   contacts?: FlatContact[];
   peerTransfers?: PeerTransferRequest[];
+  chores?: FlatChore[];
+  onToggleChoreStatus?: (choreId: string) => void;
+  onAddChore?: (chore: Omit<FlatChore, 'id'>) => void;
+  onDeleteChore?: (choreId: string) => void;
+  onCompleteChoreWithHistory?: (choreId: string) => void;
   holderPasscode?: string;
   onUpdateHolderPasscode?: (newPasscode: string) => void;
   onOpenRecordExpense: () => void;
@@ -127,15 +137,44 @@ export default function HolderPortal({
   onResetToCompletelyBlank,
   contacts = [],
   peerTransfers = [],
+  chores = [],
+  onToggleChoreStatus,
+  onAddChore,
+  onDeleteChore,
+  onCompleteChoreWithHistory,
   firebaseStatus = 'connected',
 }: HolderPortalProps) {
   const [activeTab, setActiveTab] = useState<
-    'mates' | 'expenses' | 'arrears' | 'completed' | 'verifyPayments' | 'requests' | 'matrix' | 'flatInfo' | 'security'
+    'mates' | 'expenses' | 'arrears' | 'completed' | 'verifyPayments' | 'chores' | 'requests' | 'matrix' | 'flatInfo' | 'security'
   >('mates');
   const [arrearFilter, setArrearFilter] = useState<'all' | 'owedToMe' | 'owedByMe' | string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseCatFilter, setExpenseCatFilter] = useState('all');
+
+  // Flat Duties & Roster State
+  const [showDutyModal, setShowDutyModal] = useState(false);
+  const [dutyRole, setDutyRole] = useState('Kitchen Cleaning & Dustbins');
+  const [customDutyTitle, setCustomDutyTitle] = useState('');
+  const [dutyAssignedId, setDutyAssignedId] = useState(members[0]?.id || holder.id);
+  const [dutyFrequency, setDutyFrequency] = useState<ChoreFrequency>('Daily');
+  const [dutyDueDate, setDutyDueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dutyNotes, setDutyNotes] = useState('');
+
+  // Helper to calculate due date by frequency
+  const calculateChoreDueDate = (freq: ChoreFrequency): string => {
+    const d = new Date();
+    if (freq === 'Daily') {
+      d.setDate(d.getDate() + 1);
+    } else if (freq === 'A day after') {
+      d.setDate(d.getDate() + 2);
+    } else if (freq === 'Weekly') {
+      d.setDate(d.getDate() + 7);
+    } else if (freq === 'Monthly') {
+      d.setMonth(d.getMonth() + 1);
+    }
+    return d.toISOString().slice(0, 10);
+  };
 
   // Flat Info Contact Modal State
   const [showContactModal, setShowContactModal] = useState(false);
@@ -342,11 +381,12 @@ export default function HolderPortal({
 
           <button
             type="button"
-            onClick={() => generatePurchasedItemsCSV(expenses, members)}
-            className="px-2.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold text-emerald-400 transition-colors"
-            title="Download Bought Items as CSV"
+            onClick={() => generateDutyRosterPDF(chores, members)}
+            className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-colors"
+            title="Download Flat Duties &amp; Roles Roster as PDF (Holder Exclusive)"
           >
-            CSV
+            <FileDown className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">Duty Roster (PDF)</span>
           </button>
         </div>
       </div>
@@ -622,6 +662,25 @@ export default function HolderPortal({
             <span>Flat Info ({(contacts || []).length})</span>
           </button>
 
+          {/* FLAT DUTIES & ROLES ROSTER */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('chores')}
+            className={`inline-flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'chores'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <CheckSquare className="w-4 h-4 text-indigo-500" />
+            <span>Duties &amp; Roles ({(chores || []).length})</span>
+            {chores.filter((c) => c.status === 'PENDING').length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                {chores.filter((c) => c.status === 'PENDING').length}
+              </span>
+            )}
+          </button>
+
           {/* REQUESTS & CLAIMS TAB */}
           <button
             type="button"
@@ -864,16 +923,6 @@ export default function HolderPortal({
               >
                 <FileDown className="w-3.5 h-3.5 text-indigo-500" />
                 <span>Bought Items (PDF)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => generatePurchasedItemsCSV(expenses, members)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
-                title="Download Bought Items Register (CSV)"
-              >
-                <FileDown className="w-3.5 h-3.5 text-emerald-500" />
-                <span>CSV</span>
               </button>
 
               <button
@@ -1521,6 +1570,258 @@ export default function HolderPortal({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB: FLAT DUTIES & ROLES ROSTER (HOLDER) ================= */}
+      {activeTab === 'chores' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-indigo-500" />
+                  <span>Flat Duties &amp; Roles Roster</span>
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                  Holder Authority
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Assign different roommates to different duties with custom frequencies. Stored with full turn history.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => generateDutyRosterPDF(chores, members)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold shadow-sm transition-all"
+                title="Download Official Flat Duties &amp; Roles Roster as PDF"
+              >
+                <FileDown className="w-4 h-4 text-emerald-400" />
+                <span>Download Roster (PDF)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDutyRole('Kitchen Cleaning & Dustbins');
+                  setCustomDutyTitle('');
+                  setDutyAssignedId(members[0]?.id || holder.id);
+                  setDutyFrequency('Daily');
+                  setDutyDueDate(new Date().toISOString().slice(0, 10));
+                  setDutyNotes('');
+                  setShowDutyModal(true);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Assign New Duty</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Current Duties Grid */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+              <span>Active Roles &amp; Scheduled Duties ({chores.length})</span>
+            </h3>
+
+            {chores.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">
+                <CheckSquare className="w-8 h-8 text-slate-400 mx-auto" />
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  No flat duties configured yet.
+                </p>
+                <p className="text-xs text-slate-400">
+                  Click &ldquo;+ Assign New Duty&rdquo; above to set up duties for Kitchen, Dustbins, Motor, Cleaning, etc.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {chores.map((chore) => {
+                  const assigned = members.find((m) => m.id === chore.assignedMemberId);
+                  const isDone = chore.status === 'DONE';
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  const isDueToday = (chore.dueDate || chore.dueDay) === todayStr;
+                  const isOverdue = (chore.dueDate || chore.dueDay || '') < todayStr && !isDone;
+
+                  return (
+                    <div
+                      key={chore.id}
+                      className={`p-5 rounded-2xl border transition-all flex flex-col justify-between gap-3 shadow-sm ${
+                        isDone
+                          ? 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/10'
+                          : isDueToday
+                          ? 'border-amber-400 dark:border-amber-600 bg-amber-50/30 dark:bg-amber-950/20 shadow-md ring-2 ring-amber-400/40'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                      }`}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800">
+                            {chore.frequency}
+                          </span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isDone
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                : isDueToday
+                                ? 'bg-amber-500 text-white animate-pulse'
+                                : isOverdue
+                                ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            }`}
+                          >
+                            {isDone
+                              ? 'Completed ✓'
+                              : isDueToday
+                              ? '🔔 Turn Today!'
+                              : isOverdue
+                              ? 'Overdue'
+                              : 'Pending Turn'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
+                            {chore.title}
+                          </h4>
+                          {chore.notes && (
+                            <p className="text-xs text-slate-500 italic mt-0.5">
+                              &quot;{chore.notes}&quot;
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Assigned Roommate */}
+                        <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                          <div
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs ${
+                              assigned?.avatarBg || 'bg-indigo-600'
+                            }`}
+                          >
+                            {assigned ? assigned.name.slice(0, 2).toUpperCase() : '??'}
+                          </div>
+                          <div className="text-xs">
+                            <span className="text-slate-400 block text-[10px]">Turn Assigned To:</span>
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {assigned?.name || 'Unassigned'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Due Date info */}
+                        <div className="text-xs text-slate-500 flex items-center justify-between pt-1">
+                          <span>Due: <strong>{chore.dueDate || chore.dueDay || 'Today'}</strong></span>
+                          {chore.lastCompletedAt && isDone && (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                              Done on {new Date(chore.lastCompletedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                        {onDeleteChore && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Delete duty "${chore.title}"?`)) {
+                                onDeleteChore(chore.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="Delete this duty"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        <div className="flex items-center gap-2 ml-auto">
+                          {onCompleteChoreWithHistory ? (
+                            <button
+                              type="button"
+                              onClick={() => onCompleteChoreWithHistory(chore.id)}
+                              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 ${
+                                isDone
+                                  ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{isDone ? 'Advance Next Turn' : 'Mark Done ✓'}</span>
+                            </button>
+                          ) : onToggleChoreStatus ? (
+                            <button
+                              type="button"
+                              onClick={() => onToggleChoreStatus(chore.id)}
+                              className="px-3.5 py-1.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
+                            >
+                              {isDone ? 'Mark Pending' : 'Mark Done ✓'}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Stored History & Verification Log */}
+          <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+              <span>Duty Completion History &amp; Verification Log</span>
+              <span className="text-[11px] font-normal text-slate-400">
+                Permanent records stored for PDF export
+              </span>
+            </h3>
+
+            {chores.every((c) => !c.history || c.history.length === 0) ? (
+              <p className="text-xs text-slate-400 italic">
+                No archived completion records yet. Whenever duties are marked completed, full audit records will appear here.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 overflow-hidden">
+                {chores.flatMap((c) =>
+                  (c.history || []).map((h) => {
+                    const member = members.find((m) => m.id === h.assignedMemberId);
+                    return (
+                      <div
+                        key={h.id}
+                        className="p-3.5 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <div>
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {c.title}
+                            </span>
+                            <span className="text-slate-400 ml-2">
+                              Assigned: {h.assignedDate} &bull; Completed by <strong>{member?.name || 'Roommate'}</strong>
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            {h.completedAt ? new Date(h.completedAt).toLocaleDateString() : 'Done'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                            Verified ✓
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2313,6 +2614,176 @@ export default function HolderPortal({
                   className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-sm"
                 >
                   Save Contact
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Duty Modal for Holder */}
+      {showDutyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-indigo-500" />
+                  <span>Assign Flat Duty / Role</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Assign house maintenance role to any roommate
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDutyModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const finalTitle = dutyRole === 'Custom' ? customDutyTitle.trim() : dutyRole;
+                if (!finalTitle) return;
+
+                if (onAddChore) {
+                  onAddChore({
+                    title: finalTitle,
+                    roleName: dutyRole,
+                    assignedMemberId: dutyAssignedId,
+                    frequency: dutyFrequency,
+                    dueDate: dutyDueDate,
+                    dueDay: dutyDueDate,
+                    status: 'PENDING',
+                    notes: dutyNotes.trim() || undefined,
+                    history: [],
+                  });
+                }
+                setShowDutyModal(false);
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Select Role / Task Preset
+                </label>
+                <select
+                  value={dutyRole}
+                  onChange={(e) => setDutyRole(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                >
+                  <option value="Kitchen Cleaning & Dustbins">Kitchen Cleaning &amp; Dustbins</option>
+                  <option value="Water Can Refill & Motor">Water Can Refill &amp; Motor</option>
+                  <option value="Bathroom Wash">Bathroom Wash</option>
+                  <option value="Sweeping Living & Balcony">Sweeping Living &amp; Balcony</option>
+                  <option value="Utensils Cleaning">Utensils Cleaning</option>
+                  <option value="Weekly Grocery/Veg Run">Weekly Grocery/Veg Run</option>
+                  <option value="Fridge & Kitchen Organization">Fridge &amp; Kitchen Organization</option>
+                  <option value="Custom">Custom Task...</option>
+                </select>
+              </div>
+
+              {dutyRole === 'Custom' && (
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Custom Duty Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Balcony plants watering / Wi-Fi check"
+                    value={customDutyTitle}
+                    onChange={(e) => setCustomDutyTitle(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Assign Roommate
+                </label>
+                <select
+                  value={dutyAssignedId}
+                  onChange={(e) => setDutyAssignedId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none font-semibold text-indigo-600 dark:text-indigo-400"
+                >
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} {m.isHolder ? '(Holder)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Frequency
+                  </label>
+                  <select
+                    value={dutyFrequency}
+                    onChange={(e) => {
+                      const freq = e.target.value as ChoreFrequency;
+                      setDutyFrequency(freq);
+                      if (freq !== 'Custom') {
+                        setDutyDueDate(calculateChoreDueDate(freq));
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none"
+                  >
+                    <option value="Daily">Daily</option>
+                    <option value="A day after">A day after</option>
+                    <option value="Weekly">Weekly</option>
+                    <option value="Monthly">Monthly</option>
+                    <option value="Custom">Custom</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Due Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={dutyDueDate}
+                    onChange={(e) => setDutyDueDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Notes / Instructions (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Empty both dustbins in morning before 9 AM"
+                  value={dutyNotes}
+                  onChange={(e) => setDutyNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowDutyModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md"
+                >
+                  Save Duty Roster
                 </button>
               </div>
             </form>

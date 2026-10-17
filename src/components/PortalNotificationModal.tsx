@@ -21,6 +21,7 @@ interface PortalNotificationModalProps {
   currentMember: Member;
   onConfirmPaymentClaim?: (claimId: string) => void;
   onRejectPaymentClaim?: (claimId: string) => void;
+  onCompleteChore?: (choreId: string) => void;
   onMarkNotificationRead: (notificationId: string) => void;
   onClose: () => void;
 }
@@ -32,6 +33,7 @@ export default function PortalNotificationModal({
   currentMember,
   onConfirmPaymentClaim,
   onRejectPaymentClaim,
+  onCompleteChore,
   onMarkNotificationRead,
   onClose,
 }: PortalNotificationModalProps) {
@@ -103,6 +105,11 @@ export default function PortalNotificationModal({
               {notification.type === 'RENT_ALERT' && (
                 <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300/50">
                   Rent Notice
+                </span>
+              )}
+              {notification.type === 'CHORE_DUE' && (
+                <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-white shadow-md shadow-amber-500/30 flex items-center gap-1.5 animate-bounce">
+                  <span>🔔 Today is Your Turn!</span>
                 </span>
               )}
             </div>
@@ -299,10 +306,41 @@ export default function PortalNotificationModal({
               </div>
             )}
 
+            {/* Case 4: Chore / Flat Duty Turn Due Today */}
+            {notification.type === 'CHORE_DUE' && (
+              <div className="flex flex-col sm:flex-row items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleAcknowledge}
+                  className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm transition-all"
+                >
+                  <span>Remind Me Later / Close</span>
+                </button>
+
+                {notification.choreId && onCompleteChore && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (notification.choreId && onCompleteChore) {
+                        onCompleteChore(notification.choreId);
+                      }
+                      onMarkNotificationRead(notification.id);
+                      onClose();
+                    }}
+                    className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-600/30 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span>Mark Duty Completed ✓</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Default Case: Info / Confirmed */}
             {notification.type !== 'PAYMENT_CLAIM' &&
               notification.type !== 'EXTENSION_REQUEST' &&
-              notification.type !== 'RENT_ALERT' && (
+              notification.type !== 'RENT_ALERT' &&
+              notification.type !== 'CHORE_DUE' && (
                 <div className="flex items-center justify-end">
                   <button
                     type="button"

@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { Member, ExpenseShare, Expense } from '@/types';
+import { Member, ExpenseShare, Expense, FlatChore } from '@/types';
 
 /**
  * Generates an isolated personal expense statement PDF strictly for the specified member.
@@ -146,9 +146,11 @@ export function generateMemberExpensePDF(
       const parentExpense = expenseMap.get(share.expenseId);
       const creditor = memberMap.get(share.creditorId);
       const splitCount = parentExpense?.splitMemberIds?.length || 1;
-      const formattedDate = new Date(share.createdAt).toLocaleDateString('en-IN', {
+      const rawDate = parentExpense?.date || share.createdAt;
+      const formattedDate = new Date(rawDate).toLocaleDateString('en-IN', {
         day: 'numeric',
         month: 'short',
+        year: 'numeric',
       });
 
       // Alternating row background
@@ -317,9 +319,11 @@ export function generateHolderMasterAuditPDF(
     }
 
     const payer = memberMap.get(exp.paidById)?.name || 'Holder';
-    const dt = new Date(exp.createdAt).toLocaleDateString('en-IN', {
+    const rawDate = exp.date || exp.createdAt;
+    const dt = new Date(rawDate).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
+      year: 'numeric',
     });
 
     doc.setFontSize(8);
@@ -450,9 +454,11 @@ export function generatePurchasedItemsPDF(
     }
 
     const payer = memberMap.get(exp.paidById)?.name || 'Holder';
-    const dt = new Date(exp.createdAt).toLocaleDateString('en-IN', {
+    const rawDate = exp.date || exp.createdAt;
+    const dt = new Date(rawDate).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
+      year: 'numeric',
     });
 
     doc.setFontSize(8);
@@ -544,4 +550,245 @@ export function generatePurchasedItemsCSV(expenses: Expense[], members: Member[]
   a.download = `Flat_Purchases_Register_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Generates an official Duty & Roster Statement PDF strictly for the Holder.
+ * Contains:
+ * - Flat duty roster summary
+ * - Current schedule & assigned roommates
+ * - Full audit history log of who was assigned which duty and when it was completed
+ */
+export function generateDutyRosterPDF(
+  chores: FlatChore[],
+  members: Member[]
+) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const totalChores = chores.length;
+  const pendingChores = chores.filter((c) => c.status === 'PENDING').length;
+  const completedChores = chores.filter((c) => c.status === 'DONE').length;
+
+  // Gather all historical records
+  const allHistory: {
+    dutyTitle: string;
+    roleName: string;
+    assignedMemberName: string;
+    assignedDate: string;
+    completedAt?: string;
+    status: string;
+    notes?: string;
+  }[] = [];
+
+  chores.forEach((c) => {
+    if (c.history && c.history.length > 0) {
+      c.history.forEach((h) => {
+        allHistory.push({
+          dutyTitle: c.title,
+          roleName: c.roleName || 'General',
+          assignedMemberName: memberMap.get(h.assignedMemberId)?.name || 'Unassigned',
+          assignedDate: h.assignedDate,
+          completedAt: h.completedAt,
+          status: h.status,
+          notes: h.notes,
+        });
+      });
+    }
+  });
+
+  // Top Banner
+  doc.setFillColor(15, 23, 42); // Slate-900
+  doc.rect(0, 0, 210, 32, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('FLAT-MATE - DUTIES & ROSTER AUDIT REPORT', 14, 15);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(203, 213, 225);
+  doc.text('Official House Duties, Cleaning Schedule & Turn Verification Ledger', 14, 23);
+
+  const printDate = new Date().toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  doc.text(`Generated: ${printDate}`, 135, 23);
+
+  // Summary Metrics Box
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(14, 38, 182, 24, 2, 2, 'FD');
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(100, 116, 139);
+  doc.text('CONFIGURED DUTIES', 22, 47);
+  doc.text('PENDING TURNS', 82, 47);
+  doc.text('COMPLETED / HISTORY LOG', 142, 47);
+
+  doc.setFontSize(12);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${totalChores} Roles`, 22, 54);
+
+  doc.setTextColor(185, 28, 28);
+  doc.text(`${pendingChores} Pending`, 82, 54);
+
+  doc.setTextColor(22, 101, 52);
+  doc.text(`${completedChores} Active Done (${allHistory.length} History)`, 142, 54);
+
+  // SECTION 1: Current Assigned Duties
+  let y = 72;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Current Active Duty Assignments & Schedule', 14, y);
+
+  y += 6;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(14, y, 182, 8, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+
+  doc.text('ROLE / TASK', 17, y + 5.5);
+  doc.text('ASSIGNED ROOMMATE', 75, y + 5.5);
+  doc.text('FREQUENCY', 120, y + 5.5);
+  doc.text('DUE DATE', 150, y + 5.5);
+  doc.text('STATUS', 180, y + 5.5);
+
+  y += 10;
+  doc.setFont('helvetica', 'normal');
+
+  if (chores.length === 0) {
+    doc.setTextColor(148, 163, 184);
+    doc.text('No flat duties currently registered in the roster.', 14, y + 4);
+    y += 10;
+  } else {
+    chores.forEach((c, idx) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(14, y - 2, 182, 8, 'F');
+      }
+
+      const assigned = memberMap.get(c.assignedMemberId)?.name || 'Unassigned';
+
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(c.title.slice(0, 30), 17, y + 3.5);
+
+      doc.setTextColor(71, 85, 105);
+      doc.text(assigned.slice(0, 20), 75, y + 3.5);
+      doc.text(c.frequency, 120, y + 3.5);
+      doc.text(c.dueDate || c.dueDay || '-', 150, y + 3.5);
+
+      if (c.status === 'DONE') {
+        doc.setTextColor(22, 101, 52);
+        doc.text('DONE ✓', 180, y + 3.5);
+      } else {
+        doc.setTextColor(185, 28, 28);
+        doc.text('PENDING', 180, y + 3.5);
+      }
+
+      y += 8;
+    });
+  }
+
+  // SECTION 2: Complete Stored History & Audit Log
+  y += 6;
+  if (y > 240) {
+    doc.addPage();
+    y = 20;
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Duty Completion History & Verification Log', 14, y);
+
+  y += 6;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(14, y, 182, 8, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+
+  doc.text('DATE', 17, y + 5.5);
+  doc.text('TASK / DUTY', 45, y + 5.5);
+  doc.text('PERFORMED BY', 105, y + 5.5);
+  doc.text('COMPLETED AT', 145, y + 5.5);
+  doc.text('STATUS', 180, y + 5.5);
+
+  y += 10;
+  doc.setFont('helvetica', 'normal');
+
+  if (allHistory.length === 0) {
+    doc.setTextColor(148, 163, 184);
+    doc.text('No past duty completion records archived yet. Completed turns will be stored here.', 14, y + 4);
+    y += 10;
+  } else {
+    allHistory.forEach((h, idx) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(14, y - 2, 182, 8, 'F');
+      }
+
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(h.assignedDate, 17, y + 3.5);
+
+      doc.setTextColor(15, 23, 42);
+      doc.text(h.dutyTitle.slice(0, 28), 45, y + 3.5);
+
+      doc.setTextColor(71, 85, 105);
+      doc.text(h.assignedMemberName.slice(0, 18), 105, y + 3.5);
+
+      const compTime = h.completedAt
+        ? new Date(h.completedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+        : 'Pending';
+      doc.text(compTime, 145, y + 3.5);
+
+      if (h.status === 'DONE') {
+        doc.setTextColor(22, 101, 52);
+        doc.text('COMPLETED', 180, y + 3.5);
+      } else {
+        doc.setTextColor(185, 28, 28);
+        doc.text('PENDING', 180, y + 3.5);
+      }
+
+      y += 8;
+    });
+  }
+
+  // Footer
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `FlatMate Duty & Roster Report - Official Holder Record | Page ${i} of ${pageCount}`,
+      14,
+      288
+    );
+  }
+
+  doc.save('FlatMate_Duties_Roster_Report.pdf');
 }

@@ -52,6 +52,7 @@ export interface Expense {
   category: ExpenseCategory;
   paidById: string; // Member ID who paid
   createdAt: string; // ISO date string
+  date?: string; // Optional custom user-selected date (YYYY-MM-DD)
   mode: 'split' | 'solo';
   splitMemberIds: string[];
   customSplits?: Record<string, number>; // optional custom exact amount per member
@@ -109,7 +110,7 @@ export interface HolderNotification {
   id: string;
   title: string;
   message: string;
-  type: 'PAYMENT_CLAIM' | 'PAYMENT_CONFIRMED' | 'PURCHASE_REQUEST' | 'RENT_ALERT' | 'EXTENSION_REQUEST' | 'INFO';
+  type: 'PAYMENT_CLAIM' | 'PAYMENT_CONFIRMED' | 'PURCHASE_REQUEST' | 'RENT_ALERT' | 'EXTENSION_REQUEST' | 'CHORE_DUE' | 'INFO';
   timestamp: string;
   read: boolean;
   targetMemberId?: string; // which member this relates to
@@ -120,6 +121,8 @@ export interface HolderNotification {
   billTitle?: string;
   claimId?: string;
   shareId?: string;
+  choreId?: string;
+  choreTitle?: string;
   actionType?: 'CONFIRM_CLAIM' | 'VIEW_BILL' | 'EXTEND_TIME' | 'BUY_REQUEST' | 'INFO';
 }
 
@@ -165,15 +168,27 @@ export interface PantryItem {
 
 export type ChoreFrequency = 'Daily' | 'A day after' | 'Weekly' | 'Monthly' | 'Custom';
 
+export interface ChoreAssignmentRecord {
+  id: string;
+  assignedMemberId: string;
+  assignedDate: string; // YYYY-MM-DD
+  completedAt?: string;
+  status: 'PENDING' | 'DONE';
+  notes?: string;
+}
+
 export interface FlatChore {
   id: string;
   title: string;
+  roleName?: string; // e.g. "Kitchen & Dustbins", "Water Can Refill", etc.
   assignedMemberId: string;
   frequency: ChoreFrequency;
   dueDate: string; // YYYY-MM-DD
   dueDay?: string; // Backwards-compatible alias for day/date display
   status: 'PENDING' | 'DONE';
   lastCompletedAt?: string;
+  notes?: string;
+  history?: ChoreAssignmentRecord[]; // Stored audit history of duties
 }
 
 export interface FlatContact {

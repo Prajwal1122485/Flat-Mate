@@ -179,6 +179,59 @@ export default function Home() {
     });
   };
 
+  // Automated Turn Notification check for Flat Duties & Tasks:
+  // When active member enters portal, check if any pending chore assigned to them is due today (or overdue).
+  // If no unread CHORE_DUE notification exists for this chore, automatically dispatch one!
+  useEffect(() => {
+    if (!appState || activePortalType === 'gatekeeper') return;
+    const currentHolder = appState.members.find((m) => m.isHolder) || appState.members[0];
+    const currentActiveMember = appState.members.find((m) => m.id === currentMemberId) || currentHolder;
+    const activeId = activePortalType === 'holder' ? currentHolder.id : currentActiveMember.id;
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const dueChoresForActiveMember = (appState.chores || []).filter(
+      (c) =>
+        c.assignedMemberId === activeId &&
+        c.status === 'PENDING' &&
+        (c.dueDate || c.dueDay || '') <= todayStr
+    );
+
+    if (dueChoresForActiveMember.length === 0) return;
+
+    // Check if any of these chores does not have an active unread notification
+    const missingNotifs = dueChoresForActiveMember.filter(
+      (c) =>
+        !(appState.notifications || []).some(
+          (n) =>
+            n.type === 'CHORE_DUE' &&
+            n.choreId === c.id &&
+            n.targetMemberId === activeId &&
+            !n.read
+        )
+    );
+
+    if (missingNotifs.length > 0) {
+      const newNotifs: HolderNotification[] = missingNotifs.map((chore) => ({
+        id: `notif_chore_${chore.id}_${Date.now()}`,
+        title: `🔔 Today is your turn! You have to do ${chore.title}`,
+        message: `House maintenance task "${chore.title}" (${chore.roleName || chore.frequency} duty) is due today. Please complete your turn.`,
+        type: 'CHORE_DUE',
+        timestamp: new Date().toISOString(),
+        read: false,
+        targetMemberId: activeId,
+        toMemberId: activeId,
+        fromMemberId: currentHolder.id,
+        choreId: chore.id,
+        choreTitle: chore.title,
+      }));
+
+      updateState((prev) => ({
+        ...prev,
+        notifications: [...newNotifs, ...prev.notifications],
+      }));
+    }
+  }, [activePortalType, currentMemberId, appState?.chores, appState?.notifications]);
+
   if (!appState) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
@@ -228,8 +281,11 @@ export default function Home() {
           const currentActiveMemberId =
             activePortalType === 'holder' ? holder.id : currentMember.id;
 
-          // If logged in as Holder: show claims to holder, extension requests, or purchase requests
+          // If logged in as Holder: show claims to holder, extension requests, purchase requests, or chores assigned to holder
           if (activePortalType === 'holder') {
+            if (n.type === 'CHORE_DUE') {
+              return n.targetMemberId === holder.id;
+            }
             return (
               n.toMemberId === holder.id ||
               n.targetMemberId === holder.id ||
@@ -318,15 +374,18 @@ export default function Home() {
     notes?: string;
     customSplits?: Record<string, number>;
     isPreCollectedSettled?: boolean;
+    date?: string;
   }) => {
     const expenseId = `exp_${Date.now()}`;
+    const isoDate = data.date ? new Date(data.date).toISOString() : new Date().toISOString();
     const newExpense: Expense = {
       id: expenseId,
       title: data.title,
       totalAmount: data.totalAmount,
       category: data.category,
       paidById: data.paidById,
-      createdAt: new Date().toISOString(),
+      createdAt: isoDate,
+      date: data.date,
       mode: data.mode,
       splitMemberIds: data.splitMemberIds,
       notes: data.notes,
@@ -355,11 +414,11 @@ export default function Home() {
         creditorId: data.paidById,
         amount: exactSplits[mId] || 0,
         status: isCompleted ? ('COMPLETED' as const) : ('ARREAR' as const),
-        createdAt: new Date().toISOString(),
-        settledAt: isCompleted ? new Date().toISOString() : undefined,
+        createdAt: isoDate,
+        settledAt: isCompleted ? isoDate : undefined,
         paymentNote: isPreSettled ? 'Pre-collected by Holder before purchase' : undefined,
         isHolderVerified: isVerified,
-        verifiedByHolderAt: isVerified ? new Date().toISOString() : undefined,
+        verifiedByHolderAt: isVerified ? isoDate : undefined,
       };
     });
 
@@ -1125,6 +1184,56 @@ export default function Home() {
     }));
   };
 
+  // Complete Chore with Audit History & Frequency Turn Advance
+  const handleCompleteChoreWithHistory = (choreId: string) => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const chore = appState.chores.find((c) => c.id === choreId);
+    if (!chore) return;
+
+    // Calculate next due date
+    const d = new Date(chore.dueDate || todayStr);
+    if (chore.frequency === 'Daily') {
+      d.setDate(d.getDate() + 1);
+    } else if (chore.frequency === 'A day after') {
+      d.setDate(d.getDate() + 2);
+    } else if (chore.frequency === 'Weekly') {
+      d.setDate(d.getDate() + 7);
+    } else if (chore.frequency === 'Monthly') {
+      d.setMonth(d.getMonth() + 1);
+    } else {
+      d.setDate(d.getDate() + 1);
+    }
+    const nextDueDate = d.toISOString().slice(0, 10);
+
+    const historyRecord = {
+      id: `chist_${Date.now()}`,
+      assignedMemberId: chore.assignedMemberId,
+      assignedDate: chore.dueDate || todayStr,
+      completedAt: new Date().toISOString(),
+      status: 'DONE' as const,
+      notes: chore.notes,
+    };
+
+    updateState((prev) => ({
+      ...prev,
+      chores: prev.chores.map((c) =>
+        c.id === choreId
+          ? {
+              ...c,
+              dueDate: nextDueDate,
+              dueDay: nextDueDate,
+              status: 'PENDING' as const,
+              lastCompletedAt: new Date().toISOString(),
+              history: [...(c.history || []), historyRecord],
+            }
+          : c
+      ),
+      notifications: prev.notifications.map((n) =>
+        n.choreId === choreId ? { ...n, read: true } : n
+      ),
+    }));
+  };
+
   const handleAddChore = (choreData: Omit<FlatChore, 'id'>) => {
     const newChore: FlatChore = {
       ...choreData,
@@ -1340,6 +1449,11 @@ export default function Home() {
             onUpdateMember={handleUpdateMember}
             onClearAllTransactions={handleClearAllTransactions}
             onResetToCompletelyBlank={handleResetToCompletelyBlank}
+            chores={chores}
+            onToggleChoreStatus={handleToggleChoreStatus}
+            onAddChore={handleAddChore}
+            onDeleteChore={handleDeleteChore}
+            onCompleteChoreWithHistory={handleCompleteChoreWithHistory}
             firebaseStatus={firebaseStatus}
           />
         )}
@@ -1376,6 +1490,7 @@ export default function Home() {
             onUpdatePantryStatus={handleUpdatePantryStatus}
             onAddPantryItem={handleAddPantryItem}
             onToggleChoreStatus={handleToggleChoreStatus}
+            onCompleteChoreWithHistory={handleCompleteChoreWithHistory}
             onAddChore={handleAddChore}
             onDeleteChore={handleDeleteChore}
             onSettleShare={handleSettleShare}
@@ -1489,6 +1604,7 @@ export default function Home() {
         currentMember={activePortalType === 'holder' ? holder : currentMember}
         onConfirmPaymentClaim={handleConfirmPaymentClaim}
         onRejectPaymentClaim={handleRejectPaymentClaim}
+        onCompleteChore={handleCompleteChoreWithHistory}
         onMarkNotificationRead={handleMarkNotificationRead}
         onClose={() => {
           if (activePortalNotification) {

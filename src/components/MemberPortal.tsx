@@ -52,7 +52,6 @@ import {
 import {
   generateMemberExpensePDF,
   generatePurchasedItemsPDF,
-  generatePurchasedItemsCSV,
 } from '@/lib/pdfGenerator';
 
 interface MemberPortalProps {
@@ -91,6 +90,7 @@ interface MemberPortalProps {
   onUpdatePantryStatus?: (itemId: string, status: PantryStatus) => void;
   onAddPantryItem?: (item: Omit<PantryItem, 'id' | 'updatedAt'>) => void;
   onToggleChoreStatus: (choreId: string) => void;
+  onCompleteChoreWithHistory?: (choreId: string) => void;
   onAddChore?: (chore: Omit<FlatChore, 'id'>) => void;
   onDeleteChore?: (choreId: string) => void;
   onSettleShare?: (shareId: string) => void;
@@ -144,6 +144,7 @@ export default function MemberPortal({
   onUpdatePantryStatus,
   onAddPantryItem,
   onToggleChoreStatus,
+  onCompleteChoreWithHistory,
   onAddChore,
   onDeleteChore,
   onSettleShare,
@@ -775,7 +776,7 @@ export default function MemberPortal({
             <FileDown className="w-4 h-4" />
           </button>
 
-          {/* Download All Bought Items Register (Separate PDF & CSV) */}
+          {/* Download All Bought Items Register (Separate PDF) */}
           <button
             type="button"
             onClick={() => generatePurchasedItemsPDF(expenses, allMembers)}
@@ -784,15 +785,6 @@ export default function MemberPortal({
           >
             <FileDown className="w-3.5 h-3.5 text-indigo-400" />
             <span>Bought Items</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => generatePurchasedItemsCSV(expenses, allMembers)}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 transition-colors text-xs font-bold"
-            title="Export all bought items to CSV / Excel spreadsheet"
-          >
-            CSV
           </button>
         </div>
       </div>
@@ -1752,15 +1744,6 @@ export default function MemberPortal({
                 <FileDown className="w-3.5 h-3.5 text-indigo-500" />
                 <span>PDF</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => generatePurchasedItemsCSV(expenses, allMembers)}
-                className="px-2 py-1.5 text-xs font-bold text-emerald-500 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
-                title="Download Bought Items Register (CSV)"
-              >
-                CSV
-              </button>
             </div>
           </div>
 
@@ -2170,11 +2153,17 @@ export default function MemberPortal({
                   <div className="flex items-center gap-2 self-end sm:self-center">
                     <button
                       type="button"
-                      onClick={() => onToggleChoreStatus(chore.id)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors ${
+                      onClick={() => {
+                        if (!isDone && onCompleteChoreWithHistory) {
+                          onCompleteChoreWithHistory(chore.id);
+                        } else {
+                          onToggleChoreStatus(chore.id);
+                        }
+                      }}
+                      className={`px-3.5 py-1.5 text-xs font-bold rounded-xl border transition-all ${
                         isDone
                           ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 border-slate-200 dark:border-slate-700'
-                          : 'bg-indigo-600 hover:bg-indigo-500 text-white border-transparent shadow-sm'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white border-transparent shadow-sm active:scale-95'
                       }`}
                     >
                       {isDone ? 'Mark as Pending' : 'Mark Done ✓'}

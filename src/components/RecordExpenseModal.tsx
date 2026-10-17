@@ -34,6 +34,7 @@ interface RecordExpenseModalProps {
     customSplits?: Record<string, number>;
     notes?: string;
     isPreCollectedSettled?: boolean;
+    date?: string;
   }) => void;
 }
 
@@ -60,6 +61,7 @@ export default function RecordExpenseModal({
   const [amountStr, setAmountStr] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('Groceries');
   const [paidById, setPaidById] = useState<string>(activeMember?.id || holder.id);
+  const [expenseDate, setExpenseDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [mode, setMode] = useState<'split' | 'solo'>('split');
 
   // Split Target: 'all' (1-to-All), 'oneToOne' (1-to-1), or 'selected' (1-to-Selected)
@@ -88,6 +90,7 @@ export default function RecordExpenseModal({
         setOneToOneMateId(otherMates[0].id);
       }
       setSelectedMemberIds(members.map((m) => m.id));
+      setExpenseDate(new Date().toISOString().slice(0, 10));
     }
   }, [isOpen, activeMember?.id, holder.id, members]);
 
@@ -240,6 +243,7 @@ export default function RecordExpenseModal({
       customSplits: finalCustomSplits,
       notes: notes.trim() || undefined,
       isPreCollectedSettled,
+      date: expenseDate,
     });
 
     // Reset and close
@@ -249,6 +253,7 @@ export default function RecordExpenseModal({
     setSplitType('equal');
     setCustomAmounts({});
     setIsPreCollectedSettled(false);
+    setExpenseDate(new Date().toISOString().slice(0, 10));
     onClose();
   };
 
@@ -329,8 +334,8 @@ export default function RecordExpenseModal({
             </div>
           </div>
 
-          {/* Category & Paid By */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Category, Paid By & Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
                 Category
@@ -363,6 +368,19 @@ export default function RecordExpenseModal({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
+                Expense Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={expenseDate}
+                onChange={(e) => setExpenseDate(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+              />
             </div>
           </div>
 

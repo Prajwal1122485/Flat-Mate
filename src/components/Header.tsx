@@ -2,13 +2,14 @@
 
 import React, { useState } from 'react';
 import {
-  ShieldCheck,
   Bell,
   Download,
   Upload,
   RefreshCw,
   MoreVertical,
   Trash2,
+  Lock,
+  ArrowLeft,
 } from 'lucide-react';
 import { Member, HolderNotification } from '@/types';
 
@@ -18,7 +19,8 @@ interface HeaderProps {
   onSelectMember?: (member: Member) => void;
   onOpenHolderPortal: () => void;
   onExitPortal: () => void;
-  activePortalType?: 'holder' | 'member' | 'gatekeeper';
+  onOpenLogin?: () => void;
+  activePortalType?: 'landing' | 'holder' | 'member' | 'gatekeeper';
   notifications: HolderNotification[];
   onMarkNotificationRead: (id: string) => void;
   onDeleteNotification?: (id: string) => void;
@@ -33,9 +35,9 @@ interface HeaderProps {
 export default function Header({
   currentMember,
   allMembers: _allMembers,
-  onOpenHolderPortal,
   onExitPortal,
-  activePortalType = 'gatekeeper',
+  onOpenLogin,
+  activePortalType = 'landing',
   notifications,
   onMarkNotificationRead,
   onDeleteNotification,
@@ -49,7 +51,17 @@ export default function Header({
   const [showNotifDrawer, setShowNotifDrawer] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  // Filter notifications: if inside member portal, only show notifications directed to this member.
+  const visibleNotifications =
+    activePortalType === 'holder'
+      ? notifications
+      : activePortalType === 'member'
+      ? notifications.filter(
+          (n) => n.toMemberId === currentMember.id || n.targetMemberId === currentMember.id
+        )
+      : [];
+
+  const unreadCount = visibleNotifications.filter((n) => !n.read).length;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,14 +71,23 @@ export default function Header({
     setShowMoreMenu(false);
   };
 
+  // STRICT SECURITY RULE:
+  // Holder powers (Clear All, Delete, Wipe to Completely Blank) are ONLY granted
+  // when actively authenticated inside the Holder Portal ('holder').
   const isHolderActive = activePortalType === 'holder';
-  const isHolderUser = isHolderActive || (currentMember && currentMember.isHolder);
+  const isMemberActive = activePortalType === 'member';
+  const isLoggedIn = isHolderActive || isMemberActive;
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Brand Logo & Subtitle */}
-        <div className="flex items-center gap-3">
+        <div
+          onClick={() => {
+            if (!isLoggedIn) onExitPortal();
+          }}
+          className={`flex items-center gap-3 ${!isLoggedIn ? 'cursor-pointer' : ''}`}
+        >
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white flex items-center justify-center font-black text-lg shadow-md shadow-indigo-500/20">
             ₹
           </div>
@@ -85,7 +106,7 @@ export default function Header({
           </div>
         </div>
 
-        {/* Action Controls & Top Holder Portal Access */}
+        {/* Action Controls & Top Navigation */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Live Firebase Database Connection Indicator */}
           <div
@@ -98,10 +119,10 @@ export default function Header({
             }`}
             title={
               firebaseStatus === 'connected'
-                ? 'Firebase Firestore connected & syncing in real time (flatmate-register)'
+                ? 'Firebase Firestore connected & syncing in real time'
                 : firebaseStatus === 'connecting'
                 ? 'Connecting to Firebase Firestore...'
-                : 'Firebase is currently offline or unconfigured. Local storage active.'
+                : 'Firebase offline. Local storage active.'
             }
           >
             <span
@@ -122,31 +143,37 @@ export default function Header({
             </span>
           </div>
 
-          {/* Top Prominent Holder Access Button */}
-          <button
-            type="button"
-            onClick={onOpenHolderPortal}
-            className={`inline-flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm transform active:scale-95 ${
-              isHolderActive
-                ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-500/40 ring-offset-1'
-                : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800'
-            }`}
-            title="Access the Holder Portal"
-          >
-            <ShieldCheck className="w-4 h-4 text-indigo-500 dark:text-indigo-400 fill-current" />
-            <span>Holder</span>
-            {isHolderActive && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            )}
-          </button>
+          {/* 1. PUBLIC LANDING PAGE: Show Glowing Login Button */}
+          {activePortalType === 'landing' && onOpenLogin && (
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-black rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition-all transform active:scale-95"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Login</span>
+            </button>
+          )}
 
-          {/* Active Profile Info & Strict Lock/Exit Portal Button (No portal hopping allowed) */}
-          {activePortalType !== 'gatekeeper' && (
+          {/* 2. GATEKEEPER / LOGIN SCREEN: Show Back to Home Button */}
+          {activePortalType === 'gatekeeper' && (
+            <button
+              type="button"
+              onClick={onExitPortal}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Home</span>
+            </button>
+          )}
+
+          {/* 3. AUTHENTICATED USER BADGE & EXIT (Strictly after logging in as Member or Holder) */}
+          {isLoggedIn && (
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
               <div className="flex items-center gap-2 px-2 py-1">
                 <div
                   className={`w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-bold ${
-                    isHolderActive ? 'bg-indigo-600' : (currentMember.avatarBg || 'bg-slate-600')
+                    isHolderActive ? 'bg-indigo-600' : currentMember.avatarBg || 'bg-slate-600'
                   }`}
                 >
                   {isHolderActive ? '👑' : currentMember.name.slice(0, 2).toUpperCase()}
@@ -156,7 +183,7 @@ export default function Header({
                     {isHolderActive ? 'Holder' : currentMember.name}
                   </span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {isHolderActive ? 'Ledger Controller' : 'Private Portal'}
+                    {isHolderActive ? 'Master Ledger' : 'Private Portal'}
                   </span>
                 </div>
               </div>
@@ -166,176 +193,185 @@ export default function Header({
                 type="button"
                 onClick={onExitPortal}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                title="Lock portal and return to FlatMate Directory"
+                title="Lock portal and return to Home"
               >
                 <span>Exit</span>
               </button>
             </div>
           )}
 
+          {/* 4. NOTIFICATIONS BELL: ONLY VISIBLE WHEN LOGGED IN AS HOLDER OR MEMBER */}
+          {isLoggedIn && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowNotifDrawer(!showNotifDrawer)}
+                className="relative p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="Notifications"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center shadow-sm">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
 
-          {/* Notifications Bell */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowNotifDrawer(!showNotifDrawer)}
-              className="relative p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Notifications & Activity"
-            >
-              <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center shadow-sm">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
-            {/* Notifications Dropdown Drawer */}
-            {showNotifDrawer && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 px-2">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                    Notifications ({unreadCount} unread)
+              {/* Notifications Dropdown Drawer */}
+              {showNotifDrawer && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 px-2">
+                    <div className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                      Notifications ({unreadCount} unread)
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {/* STRICT SECURITY: "Clear All" is ONLY shown to the Holder inside Holder Portal */}
+                      {isHolderActive && visibleNotifications.length > 0 && onClearAllNotifications && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Clear all notifications?')) {
+                              onClearAllNotifications();
+                            }
+                          }}
+                          className="text-[10px] font-bold text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:underline"
+                          title="Delete all notifications"
+                        >
+                          Clear All
+                        </button>
+                      )}
+                      <span className="text-[10px] text-slate-400">Live</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {isHolderUser && notifications.length > 0 && onClearAllNotifications && (
+
+                  <div className="mt-2 space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {visibleNotifications.length === 0 ? (
+                      <div className="py-6 text-center text-xs text-slate-400">
+                        No notifications right now.
+                      </div>
+                    ) : (
+                      visibleNotifications.map((n) => (
+                        <div
+                          key={n.id}
+                          onClick={() => onMarkNotificationRead(n.id)}
+                          className={`p-2.5 rounded-xl text-xs cursor-pointer transition-colors border group relative ${
+                            n.read
+                              ? 'bg-slate-50/60 dark:bg-slate-800/30 border-slate-200/50 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                              : 'bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900 font-semibold text-slate-900 dark:text-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-indigo-600 dark:text-indigo-400 font-bold truncate">
+                              {n.title}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-[10px] text-slate-400">
+                                {new Date(n.timestamp).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                              {/* STRICT SECURITY: Delete notification is ONLY shown to the Holder inside Holder Portal */}
+                              {isHolderActive && onDeleteNotification && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeleteNotification(n.id);
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                  title="Delete this notification"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="mt-1 text-slate-600 dark:text-slate-300 font-normal pr-4">
+                            {n.message}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 5. DATABASE TOOLS MENU: ONLY VISIBLE WHEN LOGGED IN AS HOLDER OR MEMBER */}
+          {isLoggedIn && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="Tools & Backup"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+
+              {showMoreMenu && (
+                <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportBackup();
+                      setShowMoreMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-left"
+                  >
+                    <Download className="w-4 h-4 text-slate-500" />
+                    <span>Download Backup (JSON)</span>
+                  </button>
+
+                  {/* Restore from backup: Only Holder */}
+                  {isHolderActive && (
+                    <label className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-left cursor-pointer">
+                      <Upload className="w-4 h-4 text-slate-500" />
+                      <span>Restore from Backup</span>
+                      <input
+                        type="file"
+                        accept=".json"
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
+                    </label>
+                  )}
+
+                  {/* STRICT SECURITY: "Wipe to Completely Blank" is ONLY visible inside Holder Portal */}
+                  {isHolderActive && (
+                    <>
+                      <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Clear all notifications?')) {
-                            onClearAllNotifications();
+                        onClick={() => {
+                          if (
+                            confirm(
+                              'Wipe everything to a blank slate? This resets both your local state and the Firebase Cloud database.'
+                            )
+                          ) {
+                            if (onResetToCompletelyBlank) {
+                              onResetToCompletelyBlank();
+                            } else {
+                              onResetData();
+                            }
+                            setShowMoreMenu(false);
                           }
                         }}
-                        className="text-[10px] font-bold text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:underline"
-                        title="Delete all notifications"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-left font-bold"
                       >
-                        Clear All
+                        <RefreshCw className="w-4 h-4" />
+                        <span>Wipe to Completely Blank</span>
                       </button>
-                    )}
-                    <span className="text-[10px] text-slate-400">Live</span>
-                  </div>
-                </div>
-
-                <div className="mt-2 space-y-2 max-h-72 overflow-y-auto pr-1">
-                  {notifications.length === 0 ? (
-                    <div className="py-6 text-center text-xs text-slate-400">
-                      No notifications right now.
-                    </div>
-                  ) : (
-                    notifications.map((n) => (
-                      <div
-                        key={n.id}
-                        onClick={() => onMarkNotificationRead(n.id)}
-                        className={`p-2.5 rounded-xl text-xs cursor-pointer transition-colors border group relative ${
-                          n.read
-                            ? 'bg-slate-50/60 dark:bg-slate-800/30 border-slate-200/50 dark:border-slate-800 text-slate-600 dark:text-slate-400'
-                            : 'bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900 font-semibold text-slate-900 dark:text-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-indigo-600 dark:text-indigo-400 font-bold truncate">
-                            {n.title}
-                          </span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[10px] text-slate-400">
-                              {new Date(n.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                            {isHolderUser && onDeleteNotification && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDeleteNotification(n.id);
-                                }}
-                                className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                                title="Delete this notification"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <p className="mt-1 text-slate-600 dark:text-slate-300 font-normal pr-4">
-                          {n.message}
-                        </p>
-                      </div>
-                    ))
+                    </>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Backup & Tools Menu */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Database Backup & Utilities"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
-
-            {showMoreMenu && (
-              <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onExportBackup();
-                    setShowMoreMenu(false);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-left"
-                >
-                  <Download className="w-4 h-4 text-slate-500" />
-                  <span>Download Backup (JSON)</span>
-                </button>
-
-                <label className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-left cursor-pointer">
-                  <Upload className="w-4 h-4 text-slate-500" />
-                  <span>Restore from Backup</span>
-                  <input
-                    type="file"
-                    accept=".json"
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
-                </label>
-
-                {isHolderUser && (
-                  <>
-                    <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (
-                          confirm(
-                            'Wipe everything to a blank slate? This resets both your local state and the Firebase Cloud database.'
-                          )
-                        ) {
-                          if (onResetToCompletelyBlank) {
-                            onResetToCompletelyBlank();
-                          } else {
-                            onResetData();
-                          }
-                          setShowMoreMenu(false);
-                        }
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-left font-bold"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>Wipe to Completely Blank</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </header>

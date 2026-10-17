@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import LandingPage from '@/components/LandingPage';
 import ProfileSelector from '@/components/ProfileSelector';
 import HolderPortal from '@/components/HolderPortal';
 import MemberPortal from '@/components/MemberPortal';
@@ -50,7 +51,9 @@ import { calculateExactSplit, formatINR } from '@/lib/calculations';
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState | null>(null);
-  const [activePortalType, setActivePortalType] = useState<'holder' | 'member' | 'gatekeeper'>('gatekeeper');
+  const [activePortalType, setActivePortalType] = useState<
+    'landing' | 'holder' | 'member' | 'gatekeeper'
+  >('landing');
   const [currentMemberId, setCurrentMemberId] = useState<string>('');
   const [firebaseStatus, setFirebaseStatus] = useState<FirebaseSyncStatus>('connecting');
 
@@ -183,7 +186,7 @@ export default function Home() {
   // When active member enters portal, check if any pending chore assigned to them is due today (or overdue).
   // If no unread CHORE_DUE notification exists for this chore, automatically dispatch one!
   useEffect(() => {
-    if (!appState || activePortalType === 'gatekeeper') return;
+    if (!appState || activePortalType === 'gatekeeper' || activePortalType === 'landing') return;
     const currentHolder = appState.members.find((m) => m.isHolder) || appState.members[0];
     const currentActiveMember = appState.members.find((m) => m.id === currentMemberId) || currentHolder;
     const activeId = activePortalType === 'holder' ? currentHolder.id : currentActiveMember.id;
@@ -273,7 +276,7 @@ export default function Home() {
   // When logged in, any unread message addressed to this person (or to Holder)
   // opens in a wide screen dialog with direct 1-click action buttons
   const activePortalNotification =
-    activePortalType === 'gatekeeper'
+    activePortalType === 'gatekeeper' || activePortalType === 'landing'
       ? null
       : notifications.find((n) => {
           if (n.read || n.id === dismissedAlertId) return false;
@@ -343,7 +346,7 @@ export default function Home() {
     if (activePortalType === 'holder') {
       setHolderExitedTimestamp(Date.now());
     }
-    setActivePortalType('gatekeeper');
+    setActivePortalType('landing');
   };
 
   // Select profile
@@ -1111,7 +1114,7 @@ export default function Home() {
   const handleResetToCompletelyBlank = async () => {
     const blank = await wipeFirestoreToBlank('flat_304');
     setAppState(blank);
-    setActivePortalType('gatekeeper');
+    setActivePortalType('landing');
   };
 
   // Personal Expenses (Private Diary)
@@ -1372,6 +1375,7 @@ export default function Home() {
         onSelectMember={handleSelectMemberPortal}
         onOpenHolderPortal={handleRequestHolderPortal}
         onExitPortal={handleExitPortal}
+        onOpenLogin={() => setActivePortalType('gatekeeper')}
         activePortalType={activePortalType}
         notifications={notifications}
         onMarkNotificationRead={handleMarkNotificationRead}
@@ -1391,14 +1395,26 @@ export default function Home() {
         onResetData={() => {
           const fresh = resetAppState();
           setAppState(fresh);
-          setActivePortalType('gatekeeper');
+          setActivePortalType('landing');
         }}
         firebaseStatus={firebaseStatus}
         onResetToCompletelyBlank={handleResetToCompletelyBlank}
       />
 
       {/* Main Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main
+        className={`flex-1 w-full ${
+          activePortalType === 'landing' ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6'
+        }`}
+      >
+        {/* 0. Public Next-Gen Landing Page (Zero credentials leaked, interactive simulator) */}
+        {activePortalType === 'landing' && (
+          <LandingPage
+            onLogin={() => setActivePortalType('gatekeeper')}
+            onOpenHolderLogin={handleRequestHolderPortal}
+          />
+        )}
+
         {/* 1. Gatekeeper / Roommate Selection Gateway */}
         {activePortalType === 'gatekeeper' && (
           <div className="py-4">
@@ -1406,6 +1422,8 @@ export default function Home() {
               members={members}
               currentMember={currentMember}
               onSelectMemberPortal={handleSelectMemberPortal}
+              onOpenHolderPortal={handleRequestHolderPortal}
+              onBackToLanding={() => setActivePortalType('landing')}
               firebaseStatus={firebaseStatus}
             />
           </div>

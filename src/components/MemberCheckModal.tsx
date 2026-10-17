@@ -7,11 +7,7 @@ import {
   FileDown,
   CheckCircle2,
   Clock,
-  User,
-  ShieldCheck,
-  Calendar,
   Layers,
-  ArrowRight,
 } from 'lucide-react';
 import { Member, ExpenseShare, Expense } from '@/types';
 import {
@@ -37,9 +33,9 @@ export default function MemberCheckModal({
   member,
   isOpen,
   onClose,
-  shares,
-  expenses,
-  allMembers,
+  shares = [],
+  expenses = [],
+  allMembers = [],
   holder,
   onSettleShare,
   onRevertShare,
@@ -298,7 +294,6 @@ export default function MemberCheckModal({
             ) : (
               <div className="space-y-2">
                 {completedShares.map((share) => {
-                  const parentExp = expenseMap.get(share.expenseId);
                   const creditor = memberMap.get(share.creditorId) || holder;
                   const settledDt = share.settledAt
                     ? new Date(share.settledAt).toLocaleDateString('en-IN', {

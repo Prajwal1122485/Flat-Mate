@@ -11,12 +11,10 @@ import {
   Calculator,
   AlertCircle,
   Receipt,
-  Sparkles,
-  ArrowRight,
   Check,
 } from 'lucide-react';
 import { Member, ExpenseCategory } from '@/types';
-import { calculateExactSplit, formatINR } from '@/lib/calculations';
+import { calculateExactSplit } from '@/lib/calculations';
 
 interface RecordExpenseModalProps {
   isOpen: boolean;
@@ -52,7 +50,7 @@ const CATEGORIES: ExpenseCategory[] = [
 export default function RecordExpenseModal({
   isOpen,
   onClose,
-  members,
+  members = [],
   holder,
   activeMember,
   onSaveExpense,

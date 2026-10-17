@@ -4,12 +4,7 @@ import React, { useState } from 'react';
 import {
   X,
   CreditCard,
-  CheckCircle,
-  Copy,
-  ArrowRight,
-  ShieldAlert,
   Send,
-  User,
   Check,
 } from 'lucide-react';
 import { Member, ExpenseShare } from '@/types';
@@ -35,12 +30,12 @@ export default function PayToMatesModal({
   currentMember,
   isOpen,
   onClose,
-  allMembers,
-  shares,
+  allMembers = [],
+  shares = [],
   onSubmitPaymentClaim,
 }: PayToMatesModalProps) {
   // Candidate recipients: all members except current user
-  const otherMembers = allMembers.filter((m) => m.id !== currentMember.id);
+  const otherMembers = (allMembers || []).filter((m) => m.id !== currentMember?.id);
 
   // Default to Holder or first other member
   const defaultRecipient =

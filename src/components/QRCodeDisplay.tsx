@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { QrCode, Copy, Check, Upload } from 'lucide-react';
+import { Copy, Check, Upload } from 'lucide-react';
 
 interface QRCodeDisplayProps {
   upiId: string;

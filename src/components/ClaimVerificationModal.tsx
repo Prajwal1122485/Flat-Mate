@@ -5,8 +5,6 @@ import {
   CheckCircle2,
   XCircle,
   X,
-  CreditCard,
-  UserCheck,
   AlertCircle,
   Clock,
 } from 'lucide-react';
@@ -26,13 +24,13 @@ export default function ClaimVerificationModal({
   claim,
   isOpen,
   onClose,
-  allMembers,
+  allMembers = [],
   onConfirmReceived,
   onRejectClaim,
 }: ClaimVerificationModalProps) {
   if (!isOpen || !claim) return null;
 
-  const sender = allMembers.find((m) => m.id === claim.fromMemberId);
+  const sender = (allMembers || []).find((m) => m.id === claim.fromMemberId);
   const senderName = sender?.name || 'A flatmate';
 
   const handleConfirm = () => {

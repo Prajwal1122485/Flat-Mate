@@ -37,7 +37,7 @@ function broadcastStatus(status: FirebaseSyncStatus, errorMsg: string | null = n
  * Actively tests connection to Firebase Firestore and returns diagnostics.
  */
 export async function testFirebaseConnection(
-  flatId: string = 'flat_304'
+  flatId: string = 'flat'
 ): Promise<{
   ok: boolean;
   latencyMs?: number;
@@ -84,7 +84,7 @@ export async function testFirebaseConnection(
  * When other flatmates make payments or changes, state updates across all phones instantly.
  */
 export function subscribeToFirebaseSync(
-  flatId: string = 'flat_304',
+  flatId: string = 'flat',
   onUpdate: (state: AppState) => void,
   onStatusChange?: (status: FirebaseSyncStatus, errorMsg?: string) => void
 ): () => void {
@@ -185,7 +185,7 @@ export function sanitizeStateForFirestore(state: AppState): Record<string, any> 
  */
 export async function pushStateToFirebase(
   state: AppState,
-  flatId: string = 'flat_304'
+  flatId: string = 'flat'
 ): Promise<boolean> {
   if (!isFirebaseConfigured()) {
     return false;
@@ -214,7 +214,7 @@ export async function pushStateToFirebase(
  * Force-wipes Firestore to a blank slate with Holder and Prajwal.
  */
 export async function wipeFirestoreToBlank(
-  flatId: string = 'flat_304'
+  flatId: string = 'flat'
 ): Promise<AppState> {
   const blankState: AppState = getInitialAppState();
   saveAppState(blankState);

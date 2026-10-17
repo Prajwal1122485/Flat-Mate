@@ -33,6 +33,7 @@ import {
 } from '@/types';
 import {
   AppState,
+  DEFAULT_MEMBERS,
   loadAppState,
   saveAppState,
   resetAppState,
@@ -127,7 +128,7 @@ export default function Home() {
 
     // Live sync with Firebase Firestore if credentials are provided
     const unsubscribeFirebase = subscribeToFirebaseSync(
-      'flat_304',
+      'flat',
       (remoteState) => {
         setAppState(remoteState);
       },
@@ -230,7 +231,7 @@ export default function Home() {
         notifications: [...newNotifs, ...prev.notifications],
       }));
     }
-  }, [activePortalType, currentMemberId, appState?.chores, appState?.notifications]);
+  }, [activePortalType, currentMemberId, appState?.chores, appState?.notifications, appState?.members]);
 
   if (!appState) {
     return (
@@ -245,24 +246,22 @@ export default function Home() {
     );
   }
 
-  const {
-    members,
-    expenses,
-    shares,
-    recurringBills,
-    purchaseRequests,
-    paymentClaims,
-    notifications,
-    personalExpenses,
-    pantryItems,
-    chores,
-    contacts,
-    notices,
-  } = appState;
+  const members = appState.members && appState.members.length > 0 ? appState.members : DEFAULT_MEMBERS;
+  const expenses = appState.expenses || [];
+  const shares = appState.shares || [];
+  const recurringBills = appState.recurringBills || [];
+  const purchaseRequests = appState.purchaseRequests || [];
+  const paymentClaims = appState.paymentClaims || [];
+  const notifications = appState.notifications || [];
+  const personalExpenses = appState.personalExpenses || [];
+  const pantryItems = appState.pantryItems || [];
+  const chores = appState.chores || [];
+  const contacts = appState.contacts || [];
+  const notices = appState.notices || [];
 
-  const holder = members.find((m) => m.isHolder) || members[0];
+  const holder = members.find((m) => m.isHolder) || members[0] || DEFAULT_MEMBERS[0];
   const currentMember =
-    members.find((m) => m.id === currentMemberId) || holder;
+    members.find((m) => m.id === currentMemberId) || holder || DEFAULT_MEMBERS[1];
 
   // Pending claims for currently active member
   const pendingClaimsForMe = paymentClaims.filter(
@@ -1109,7 +1108,7 @@ export default function Home() {
 
   // Wipes all data to blank slate with Holder and Prajwal in both LocalStorage & Firebase Cloud
   const handleResetToCompletelyBlank = async () => {
-    const blank = await wipeFirestoreToBlank('flat_304');
+    const blank = await wipeFirestoreToBlank('flat');
     setAppState(blank);
     setActivePortalType('gatekeeper');
   };

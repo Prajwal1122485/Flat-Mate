@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, UserCog, Trash2, Plus, Phone, CreditCard, Shield, User, Lock } from 'lucide-react';
+import { X, UserCog, Trash2, Phone, CreditCard, Lock } from 'lucide-react';
 import { Member } from '@/types';
 
 interface EditMemberModalProps {

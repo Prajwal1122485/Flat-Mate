@@ -14,7 +14,7 @@ import { Member, HolderNotification } from '@/types';
 
 interface HeaderProps {
   currentMember: Member;
-  allMembers: Member[];
+  allMembers?: Member[];
   onSelectMember?: (member: Member) => void;
   onOpenHolderPortal: () => void;
   onExitPortal: () => void;
@@ -32,7 +32,6 @@ interface HeaderProps {
 
 export default function Header({
   currentMember,
-  allMembers: _allMembers,
   onOpenHolderPortal,
   onExitPortal,
   activePortalType = 'gatekeeper',

@@ -46,8 +46,8 @@ interface RentManagerModalProps {
 export default function RentManagerModal({
   isOpen,
   onClose,
-  bills,
-  members,
+  bills = [],
+  members = [],
   holder,
   onUpdateBill,
   onAddNewBill,
@@ -81,9 +81,9 @@ export default function RentManagerModal({
   const [newTitle, setNewTitle] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [newDueDay, setNewDueDay] = useState('11');
-  const [newCategory, setNewCategory] = useState<ExpenseCategory>('Rent');
+  const [newCategory] = useState<ExpenseCategory>('Rent');
   const [newSplitMemberIds, setNewSplitMemberIds] = useState<string[]>(
-    members.map((m) => m.id)
+    (members || []).map((m) => m.id)
   );
 
   if (!isOpen) return null;

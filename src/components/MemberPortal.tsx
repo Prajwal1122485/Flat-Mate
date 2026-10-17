@@ -118,17 +118,17 @@ interface MemberPortalProps {
 
 export default function MemberPortal({
   currentMember,
-  allMembers,
-  expenses,
-  shares,
-  recurringBills,
-  purchaseRequests,
-  paymentClaims,
-  personalExpenses,
-  pantryItems = [],
-  chores,
-  contacts,
-  notices,
+  allMembers = [],
+  expenses = [],
+  shares = [],
+  recurringBills = [],
+  purchaseRequests = [],
+  paymentClaims = [],
+  personalExpenses = [],
+  pantryItems: _pantryItems = [],
+  chores = [],
+  contacts = [],
+  notices: _notices = [],
   peerTransfers = [],
   onCreatePeerTransfer,
   onSettlePeerTransfer,
@@ -141,8 +141,8 @@ export default function MemberPortal({
   onViewClaimDetail,
   onSavePersonalExpense,
   onDeletePersonalExpense,
-  onUpdatePantryStatus,
-  onAddPantryItem,
+  onUpdatePantryStatus: _onUpdatePantryStatus,
+  onAddPantryItem: _onAddPantryItem,
   onToggleChoreStatus,
   onCompleteChoreWithHistory,
   onAddChore,
@@ -358,7 +358,7 @@ export default function MemberPortal({
 
     try {
       localStorage.removeItem('flatmate_pending_upi_session');
-    } catch (e) {}
+    } catch {}
 
     setShowUpiReturnConfirmModal(false);
     setDirectPayModalBill(null);
@@ -379,7 +379,7 @@ export default function MemberPortal({
   const handleDismissUpiReturn = () => {
     try {
       localStorage.removeItem('flatmate_pending_upi_session');
-    } catch (e) {}
+    } catch {}
     setShowUpiReturnConfirmModal(false);
     setPendingUpiSession(null);
   };
@@ -2253,7 +2253,7 @@ export default function MemberPortal({
                         <a
                           href={generateWhatsAppLink(
                             contact.phone,
-                            `Hi ${contact.name}! Reaching out regarding flat maintenance (${contact.role}).`
+                            `Hi ${contact.name}! Reaching out regarding flat maintenance (${contact.role}).\n\n🌐 Flat-Mate Portal: https://flat-mate-ashy.vercel.app/`
                           )}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -2319,7 +2319,7 @@ export default function MemberPortal({
                       <a
                         href={generateWhatsAppLink(
                           mem.phone,
-                          `Hi ${mem.name}! Reaching out via FlatMate app.`
+                          `Hi ${mem.name}! Reaching out via FlatMate app.\n\n🌐 Flat-Mate Portal: https://flat-mate-ashy.vercel.app/`
                         )}
                         target="_blank"
                         rel="noopener noreferrer"

@@ -27,7 +27,6 @@ import {
   Phone,
   Plus,
   CheckSquare,
-  Square,
   ClipboardList,
 } from 'lucide-react';
 import {
@@ -103,12 +102,12 @@ interface HolderPortalProps {
 
 export default function HolderPortal({
   holder,
-  members,
-  expenses,
-  shares,
-  recurringBills,
-  purchaseRequests,
-  paymentClaims,
+  members = [],
+  expenses = [],
+  shares = [],
+  recurringBills = [],
+  purchaseRequests = [],
+  paymentClaims = [],
   holderPasscode = '1234',
   onUpdateHolderPasscode,
   onOpenRecordExpense,
@@ -132,11 +131,11 @@ export default function HolderPortal({
   onDeletePurchaseRequest,
   onDeletePaymentClaim,
   onUpdateBill,
-  onUpdateMember,
+  onUpdateMember: _onUpdateMember,
   onClearAllTransactions,
   onResetToCompletelyBlank,
   contacts = [],
-  peerTransfers = [],
+  peerTransfers: _peerTransfers = [],
   chores = [],
   onToggleChoreStatus,
   onAddChore,
@@ -1554,7 +1553,7 @@ export default function HolderPortal({
                       <a
                         href={generateWhatsAppLink(
                           contact.phone,
-                          `Hi ${contact.name}! I am reaching out from our flat regarding ${contact.role}.`
+                          `Hi ${contact.name}! I am reaching out from our flat regarding ${contact.role}.\n\n🌐 Flat-Mate Portal: https://flat-mate-ashy.vercel.app/`
                         )}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -2316,7 +2315,7 @@ export default function HolderPortal({
                 onClick={async () => {
                   setTestingDb(true);
                   try {
-                    const result = await testFirebaseConnection('flat_304');
+                    const result = await testFirebaseConnection('flat');
                     setDbTestResult(result);
                   } catch (e: any) {
                     setDbTestResult({ ok: false, error: e?.message });

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, QrCode, Upload, CreditCard, Phone, Wallet, Check } from 'lucide-react';
+import { X, QrCode, CreditCard, Phone, Wallet, Check } from 'lucide-react';
 import { Member } from '@/types';
 import QRCodeDisplay from './QRCodeDisplay';
 

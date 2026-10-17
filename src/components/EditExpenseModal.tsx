@@ -11,11 +11,10 @@ import {
   Calculator,
   AlertCircle,
   Trash2,
-  Calendar,
   Check,
 } from 'lucide-react';
 import { Member, ExpenseCategory, Expense } from '@/types';
-import { calculateExactSplit, formatINR } from '@/lib/calculations';
+import { calculateExactSplit } from '@/lib/calculations';
 
 interface EditExpenseModalProps {
   isOpen: boolean;
@@ -52,7 +51,7 @@ export default function EditExpenseModal({
   isOpen,
   onClose,
   expense,
-  members,
+  members = [],
   onUpdateExpense,
   onDeleteExpense,
 }: EditExpenseModalProps) {

@@ -24,6 +24,8 @@ import {
   Shield,
   MessageCircle,
   QrCode,
+  Phone,
+  Plus,
 } from 'lucide-react';
 import {
   Member,
@@ -32,6 +34,8 @@ import {
   RecurringBill,
   PurchaseRequest,
   DirectPaymentClaim,
+  FlatContact,
+  PeerTransferRequest,
 } from '@/types';
 import {
   formatINR,
@@ -39,6 +43,7 @@ import {
   getRecurringBillStatus,
   getDirectDebtSummaries,
   getAutomatedRentReminders,
+  generateWhatsAppLink,
 } from '@/lib/calculations';
 import {
   generateHolderMasterAuditPDF,
@@ -55,6 +60,8 @@ interface HolderPortalProps {
   recurringBills: RecurringBill[];
   purchaseRequests: PurchaseRequest[];
   paymentClaims: DirectPaymentClaim[];
+  contacts?: FlatContact[];
+  peerTransfers?: PeerTransferRequest[];
   holderPasscode?: string;
   onUpdateHolderPasscode?: (newPasscode: string) => void;
   onOpenRecordExpense: () => void;
@@ -67,6 +74,11 @@ interface HolderPortalProps {
   onRevertShare: (shareId: string) => void;
   onConfirmPaymentClaim: (claimId: string) => void;
   onRejectPaymentClaim: (claimId: string) => void;
+  onHolderVerifyShare?: (shareId: string) => void;
+  onHolderRejectShare?: (shareId: string) => void;
+  onAddContact?: (contact: Omit<FlatContact, 'id'>) => void;
+  onUpdateContact?: (contact: FlatContact) => void;
+  onDeleteContact?: (contactId: string) => void;
   onConvertRequestToExpense: (request: PurchaseRequest, targetMemberIds?: string[]) => void;
   onOpenEditExpense?: (expense: Expense) => void;
   onDeleteExpense?: (expenseId: string) => void;
@@ -99,6 +111,11 @@ export default function HolderPortal({
   onRevertShare,
   onConfirmPaymentClaim,
   onRejectPaymentClaim,
+  onHolderVerifyShare,
+  onHolderRejectShare,
+  onAddContact,
+  onUpdateContact,
+  onDeleteContact,
   onConvertRequestToExpense,
   onOpenEditExpense,
   onDeleteExpense,
@@ -108,13 +125,33 @@ export default function HolderPortal({
   onUpdateMember,
   onClearAllTransactions,
   onResetToCompletelyBlank,
+  contacts = [],
+  peerTransfers = [],
   firebaseStatus = 'connected',
 }: HolderPortalProps) {
-  const [activeTab, setActiveTab] = useState<'mates' | 'expenses' | 'arrears' | 'completed' | 'requests' | 'matrix' | 'security'>('mates');
+  const [activeTab, setActiveTab] = useState<
+    'mates' | 'expenses' | 'arrears' | 'completed' | 'verifyPayments' | 'requests' | 'matrix' | 'flatInfo' | 'security'
+  >('mates');
   const [arrearFilter, setArrearFilter] = useState<'all' | 'owedToMe' | 'owedByMe' | string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseCatFilter, setExpenseCatFilter] = useState('all');
+
+  // Flat Info Contact Modal State
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [editingContact, setEditingContact] = useState<FlatContact | null>(null);
+  const [contactRole, setContactRole] = useState('Plumber');
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactNotes, setContactNotes] = useState('');
+
+  // Unverified member completed shares awaiting Holder review & permanent lock
+  const unverifiedMemberShares = useMemo(() => {
+    return shares.filter((s) => s.status === 'COMPLETED' && !s.isHolderVerified);
+  }, [shares]);
+
+  const pendingVerificationCount =
+    unverifiedMemberShares.length + paymentClaims.filter((c) => c.status === 'PENDING').length;
 
   // Subset split modal state for purchase requests
   const [subsetRequest, setSubsetRequest] = useState<PurchaseRequest | null>(null);
@@ -550,6 +587,39 @@ export default function HolderPortal({
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>Completed Audit ({completedShares.length})</span>
+          </button>
+
+          {/* VERIFY PAYMENTS FOLDER (HOLDER EXCLUSIVE AUTHORITY) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('verifyPayments')}
+            className={`inline-flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'verifyPayments'
+                ? 'border-amber-500 text-amber-600 dark:text-amber-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-amber-500" />
+            <span>Verify the Payments</span>
+            {pendingVerificationCount > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 animate-pulse">
+                {pendingVerificationCount}
+              </span>
+            )}
+          </button>
+
+          {/* FLAT INFO (ESSENTIAL CONTACTS FOR HOUSE) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('flatInfo')}
+            className={`inline-flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'flatInfo'
+                ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <Phone className="w-4 h-4 text-emerald-500" />
+            <span>Flat Info ({(contacts || []).length})</span>
           </button>
 
           {/* REQUESTS & CLAIMS TAB */}
@@ -1144,6 +1214,314 @@ export default function HolderPortal({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ================= TAB: VERIFY THE PAYMENTS (HOLDER EXCLUSIVE AUTHORITY) ================= */}
+      {activeTab === 'verifyPayments' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black text-slate-900 dark:text-white">
+                  Verify the Payments Folder
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-500 text-slate-950">
+                  Holder Authority
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Review payment settlements recorded by roommates. Click &quot;Confirm &amp; Lock&quot; to permanently seal with 🛡️ Holder Verified, or &quot;Reject&quot; to return the share back to Arrears.
+              </p>
+            </div>
+            <div className="text-xs font-bold text-amber-600 dark:text-amber-400">
+              Pending Verification: {pendingVerificationCount}
+            </div>
+          </div>
+
+          {/* Section 1: Member-Settled Shares Awaiting Holder Lock */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center justify-between">
+              <span>Member-Settled Shares Pending Holder Lock ({unverifiedMemberShares.length})</span>
+            </h3>
+
+            {unverifiedMemberShares.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                  All settled shares are Holder Verified &amp; locked!
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Whenever a roommate marks an arrear as paid, it will show up here for your final confirmation.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {unverifiedMemberShares.map((share) => {
+                  const debtor = members.find((m) => m.id === share.debtorId);
+                  const creditor = members.find((m) => m.id === share.creditorId);
+                  const isCreditorConfirmed = !!share.isCreditorConfirmed;
+                  const isOwedToHolder = share.creditorId === holder.id;
+
+                  return (
+                    <div
+                      key={share.id}
+                      className="p-5 rounded-2xl border-2 border-amber-300 dark:border-amber-700/60 bg-amber-50/30 dark:bg-amber-950/20 shadow-sm space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-slate-900 dark:text-white text-base">
+                              {share.expenseTitle}
+                            </span>
+                            <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                              {share.category}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-600 dark:text-slate-300 mt-1 font-medium">
+                            Paid by <strong>{debtor?.name}</strong> to <strong>{creditor?.name}</strong>
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            Settled on {share.settledAt ? new Date(share.settledAt).toLocaleDateString() : 'Recently'}
+                            {share.paymentNote && ` &bull; "${share.paymentNote}"`}
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono">
+                            {formatINR(share.amount)}
+                          </div>
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold mt-1 ${
+                            isCreditorConfirmed
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : isOwedToHolder
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
+                          }`}>
+                            {isCreditorConfirmed
+                              ? `✓ Confirmed by ${creditor?.name}`
+                              : isOwedToHolder
+                              ? 'Owed to Holder'
+                              : `⏳ Awaiting ${creditor?.name}'s confirmation`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center justify-end gap-2 pt-3 border-t border-amber-200 dark:border-amber-800/60">
+                        {onHolderRejectShare && (
+                          <button
+                            type="button"
+                            onClick={() => onHolderRejectShare(share.id)}
+                            className="px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl border border-red-200 dark:border-red-900 transition-colors"
+                          >
+                            Reject (Return to Arrear)
+                          </button>
+                        )}
+                        {onHolderVerifyShare && (
+                          <button
+                            type="button"
+                            onClick={() => onHolderVerifyShare(share.id)}
+                            className="px-4 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-md shadow-emerald-600/30 transition-all active:scale-95 flex items-center gap-1.5"
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                            <span>Confirm &amp; Lock (Holder Verified)</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: Direct Payment Claims Awaiting Verification */}
+          {pendingClaimsToHolder.length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <span>Incoming Payment Claims to Holder ({pendingClaimsToHolder.length})</span>
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {pendingClaimsToHolder.map((claim) => {
+                  const sender = members.find((m) => m.id === claim.fromMemberId);
+                  return (
+                    <div
+                      key={claim.id}
+                      className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs ${
+                              sender?.avatarBg || 'bg-indigo-600'
+                            }`}
+                          >
+                            {sender?.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white">
+                              {sender?.name} reported paying:
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {claim.note || 'Direct payment via UPI'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                          {formatINR(claim.amount)}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-indigo-100 dark:border-indigo-900">
+                        <button
+                          type="button"
+                          onClick={() => onRejectPaymentClaim(claim.id)}
+                          className="px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onConfirmPaymentClaim(claim.id)}
+                          className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-sm transition-all"
+                        >
+                          Confirm &amp; Lock (Holder Verified) ✓
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================= TAB: FLAT INFO & ESSENTIAL CONTACTS (HOLDER) ================= */}
+      {activeTab === 'flatInfo' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black text-slate-900 dark:text-white">
+                  Flat Info &amp; Essential Contacts
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  Holder Managed
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Add and manage important house contacts like Plumber, Owner/Landlord, Cook, Electrician, Maid, Wi-Fi operator, and Security. Roommates can access them with 1-click Call &amp; WhatsApp.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setEditingContact(null);
+                setContactRole('Plumber');
+                setContactName('');
+                setContactPhone('');
+                setContactNotes('');
+                setShowContactModal(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Add Flat Contact</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(contacts || []).map((contact) => (
+              <div
+                key={contact.id}
+                className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between gap-3 hover:border-emerald-400 transition-all"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300/40">
+                      {contact.role}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingContact(contact);
+                          setContactRole(contact.role);
+                          setContactName(contact.name);
+                          setContactPhone(contact.phone);
+                          setContactNotes(contact.notes || '');
+                          setShowContactModal(true);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        title="Edit contact"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      {onDeleteContact && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Delete contact "${contact.name}" (${contact.role})?`)) {
+                              onDeleteContact(contact.id);
+                            }
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          title="Delete contact"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
+                    {contact.name}
+                  </h3>
+                  <p className="text-xs font-mono text-slate-600 dark:text-slate-300">
+                    {contact.phone || 'Phone number not set'}
+                  </p>
+                  {contact.notes && (
+                    <p className="text-xs text-slate-500 italic mt-1 leading-relaxed">
+                      &quot;{contact.notes}&quot;
+                    </p>
+                  )}
+                </div>
+
+                {/* 1-Click Call & 1-Click WhatsApp */}
+                <div className="flex items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  {contact.phone ? (
+                    <>
+                      <a
+                        href={`tel:${contact.phone}`}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold text-xs hover:bg-indigo-100 transition-colors"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Call</span>
+                      </a>
+                      <a
+                        href={generateWhatsAppLink(
+                          contact.phone,
+                          `Hi ${contact.name}! I am reaching out from our flat regarding ${contact.role}.`
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300 font-bold text-xs hover:bg-emerald-100 transition-colors"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>WhatsApp</span>
+                      </a>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-slate-400 italic">No phone added yet</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1816,6 +2194,128 @@ export default function HolderPortal({
                 Confirm Split ({subsetSelectedMemberIds.length} Mates)
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Contact Add / Edit Modal */}
+      {showContactModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                {editingContact ? 'Edit Flat Contact' : 'Add New Flat Contact'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowContactModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!contactName.trim() || !contactRole.trim()) return;
+
+                if (editingContact && onUpdateContact) {
+                  onUpdateContact({
+                    ...editingContact,
+                    role: contactRole.trim(),
+                    name: contactName.trim(),
+                    phone: contactPhone.trim(),
+                    notes: contactNotes.trim() || undefined,
+                  });
+                } else if (onAddContact) {
+                  onAddContact({
+                    role: contactRole.trim(),
+                    name: contactName.trim(),
+                    phone: contactPhone.trim(),
+                    notes: contactNotes.trim() || undefined,
+                  });
+                }
+                setShowContactModal(false);
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Service / Role
+                </label>
+                <select
+                  value={contactRole}
+                  onChange={(e) => setContactRole(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none"
+                >
+                  <option value="Plumber">Plumber</option>
+                  <option value="Owner / Landlord">Owner / Landlord</option>
+                  <option value="Cook">Cook</option>
+                  <option value="Electrician">Electrician</option>
+                  <option value="Maid / Housekeeping">Maid / Housekeeping</option>
+                  <option value="Wi-Fi Operator">Wi-Fi Operator</option>
+                  <option value="Security Guard">Security Guard</option>
+                  <option value="Gas Agency">Gas Agency</option>
+                  <option value="Custom">Custom Role</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Contact Person Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh (Plumber), Mr. Sharma (Landlord)"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  placeholder="e.g. 9876543210"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Notes / Description (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Call for bathroom leakages & water pump"
+                  value={contactNotes}
+                  onChange={(e) => setContactNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowContactModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-sm"
+                >
+                  Save Contact
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

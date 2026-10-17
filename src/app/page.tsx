@@ -28,6 +28,8 @@ import {
   PantryItem,
   PantryStatus,
   FlatChore,
+  FlatContact,
+  PeerTransferRequest,
 } from '@/types';
 import {
   AppState,
@@ -339,9 +341,11 @@ export default function Home() {
         : calculateExactSplit(data.totalAmount, data.splitMemberIds);
 
     const isPreSettled = !!data.isPreCollectedSettled;
+    const isHolderPayer = data.paidById === holder.id;
     const newShares: ExpenseShare[] = data.splitMemberIds.map((mId) => {
       const isPayer = mId === data.paidById;
       const isCompleted = isPreSettled || isPayer;
+      const isVerified = (isHolderPayer && isCompleted) || isPreSettled;
       return {
         id: `share_${Date.now()}_${mId}`,
         expenseId: expenseId,
@@ -354,6 +358,8 @@ export default function Home() {
         createdAt: new Date().toISOString(),
         settledAt: isCompleted ? new Date().toISOString() : undefined,
         paymentNote: isPreSettled ? 'Pre-collected by Holder before purchase' : undefined,
+        isHolderVerified: isVerified,
+        verifiedByHolderAt: isVerified ? new Date().toISOString() : undefined,
       };
     });
 
@@ -379,23 +385,86 @@ export default function Home() {
     }));
   };
 
-  // Settle Share (One-click)
+  // Settle Share (One-click) with Creditor Notification & Holder Verification Pipeline
   const handleSettleShare = (shareId: string) => {
-    updateState((prev) => ({
-      ...prev,
-      shares: prev.shares.map((s) =>
-        s.id === shareId
-          ? {
-              ...s,
-              status: 'COMPLETED' as const,
-              settledAt: new Date().toISOString(),
-            }
-          : s
-      ),
-    }));
+    const targetShare = appState.shares.find((s) => s.id === shareId);
+    if (!targetShare) return;
+
+    const isHolderActive = activePortalType === 'holder' || currentMember.id === holder.id;
+    const isCreditorHolder = targetShare.creditorId === holder.id;
+
+    if (isHolderActive || isCreditorHolder) {
+      // Direct Holder action or payment to Holder: automatically mark Holder Verified
+      updateState((prev) => ({
+        ...prev,
+        shares: prev.shares.map((s) =>
+          s.id === shareId
+            ? {
+                ...s,
+                status: 'COMPLETED' as const,
+                settledAt: new Date().toISOString(),
+                isHolderVerified: true,
+                verifiedByHolderAt: new Date().toISOString(),
+                isCreditorConfirmed: true,
+                confirmedByCreditorAt: new Date().toISOString(),
+              }
+            : s
+        ),
+      }));
+    } else {
+      // Regular member marked share as paid to another member (e.g. Akash marked paid to Prajwal):
+      const debtor = members.find((m) => m.id === targetShare.debtorId);
+      const creditor = members.find((m) => m.id === targetShare.creditorId);
+      const claimId = `claim_${Date.now()}`;
+
+      const newClaim: DirectPaymentClaim = {
+        id: claimId,
+        fromMemberId: targetShare.debtorId,
+        toMemberId: targetShare.creditorId,
+        amount: targetShare.amount,
+        shareIds: [shareId],
+        note: `Settlement for ${targetShare.expenseTitle}`,
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+      };
+
+      const popupNotif: HolderNotification = {
+        id: `notif_${Date.now()}`,
+        title: 'Payment Received Verification',
+        message: `${debtor?.name} marked that they paid ₹${targetShare.amount} for "${targetShare.expenseTitle}". Did you receive this?`,
+        type: 'PAYMENT_CLAIM',
+        timestamp: new Date().toISOString(),
+        read: false,
+        claimId: claimId,
+        fromMemberId: targetShare.debtorId,
+        toMemberId: targetShare.creditorId,
+        targetMemberId: targetShare.creditorId,
+        amount: targetShare.amount,
+        billTitle: targetShare.expenseTitle,
+        actionType: 'CONFIRM_CLAIM',
+      };
+
+      updateState((prev) => ({
+        ...prev,
+        shares: prev.shares.map((s) =>
+          s.id === shareId
+            ? {
+                ...s,
+                status: 'COMPLETED' as const,
+                settledAt: new Date().toISOString(),
+                isHolderVerified: false,
+                isCreditorConfirmed: false,
+                paymentNote: `Awaiting creditor (${creditor?.name}) & Holder verification`,
+              }
+            : s
+        ),
+        paymentClaims: [newClaim, ...prev.paymentClaims],
+        notifications: [popupNotif, ...prev.notifications],
+      }));
+    }
   };
 
-  // Undo settled share back to Arrear
+  // Undo settled share back to Arrear (only allowed if not permanently locked by Holder)
   const handleRevertShare = (shareId: string) => {
     updateState((prev) => ({
       ...prev,
@@ -405,6 +474,8 @@ export default function Home() {
               ...s,
               status: 'ARREAR' as const,
               settledAt: undefined,
+              isHolderVerified: false,
+              isCreditorConfirmed: false,
               revertedAt: new Date().toISOString(),
             }
           : s
@@ -479,6 +550,7 @@ export default function Home() {
     const recipient = members.find((m) => m.id === claim.toMemberId);
     const sender = members.find((m) => m.id === claim.fromMemberId);
     let remainingAmountToSettle = claim.amount;
+    const isHolderRecipient = claim.toMemberId === holder.id;
 
     updateState((prev) => {
       // 1. Mark claim confirmed
@@ -492,8 +564,20 @@ export default function Home() {
           : c
       );
 
-      // 2. Settle matching shares
+      // 2. Settle matching shares with creditor confirmation
       const updatedShares = prev.shares.map((s) => {
+        if (claim.shareIds && claim.shareIds.includes(s.id)) {
+          return {
+            ...s,
+            status: 'COMPLETED' as const,
+            isCreditorConfirmed: true,
+            confirmedByCreditorAt: new Date().toISOString(),
+            isHolderVerified: isHolderRecipient || s.isHolderVerified,
+            verifiedByHolderAt: isHolderRecipient ? new Date().toISOString() : s.verifiedByHolderAt,
+            settledAt: s.settledAt || new Date().toISOString(),
+            paymentNote: `Confirmed received by ${recipient?.name}`,
+          };
+        }
         if (
           s.status === 'ARREAR' &&
           s.debtorId === claim.fromMemberId &&
@@ -505,6 +589,10 @@ export default function Home() {
             return {
               ...s,
               status: 'COMPLETED' as const,
+              isCreditorConfirmed: true,
+              confirmedByCreditorAt: new Date().toISOString(),
+              isHolderVerified: isHolderRecipient || s.isHolderVerified,
+              verifiedByHolderAt: isHolderRecipient ? new Date().toISOString() : s.verifiedByHolderAt,
               settledAt: new Date().toISOString(),
               paymentNote: `Settled via direct payment #${claimId.slice(-4)}`,
             };
@@ -517,7 +605,7 @@ export default function Home() {
       const confirmNotification: HolderNotification = {
         id: `notif_${Date.now()}`,
         title: 'Payment Confirmed & Settled ✓',
-        message: `${sender?.name}'s payment of ₹${claim.amount} was verified by ${recipient?.name}. Shares updated to Completed!`,
+        message: `${sender?.name}'s payment of ₹${claim.amount} was confirmed received by ${recipient?.name}! Shares updated to Completed.`,
         type: 'PAYMENT_CONFIRMED',
         timestamp: new Date().toISOString(),
         read: false,
@@ -537,7 +625,7 @@ export default function Home() {
     });
   };
 
-  // Recipient rejects payment claim
+  // Recipient rejects payment claim: share returns back to pending Arrears
   const handleRejectPaymentClaim = (claimId: string) => {
     const claim = paymentClaims.find((c) => c.id === claimId);
     if (!claim) return;
@@ -547,7 +635,7 @@ export default function Home() {
     const rejectNotification: HolderNotification = {
       id: `notif_${Date.now()}`,
       title: 'Payment Not Received ✕',
-      message: `Your reported payment of ₹${claim.amount} was marked as Not Received by ${recipient?.name}. Please check transaction details.`,
+      message: `Your reported payment of ₹${claim.amount} was marked as Not Received by ${recipient?.name}. Returned to pending Arrears.`,
       type: 'INFO',
       timestamp: new Date().toISOString(),
       read: false,
@@ -564,9 +652,99 @@ export default function Home() {
         c.id === claimId ? { ...c, status: 'REJECTED' as const } : c
       ),
       shares: prev.shares.map((s) =>
-        claim.shareIds?.includes(s.id) ? { ...s, status: 'ARREAR' as const } : s
+        claim.shareIds?.includes(s.id)
+          ? {
+              ...s,
+              status: 'ARREAR' as const,
+              settledAt: undefined,
+              isHolderVerified: false,
+              isCreditorConfirmed: false,
+            }
+          : s
       ),
       notifications: [rejectNotification, ...prev.notifications],
+    }));
+  };
+
+  // Holder explicitly verifies and permanently locks a settled share across all portals
+  const handleHolderVerifyShare = (shareId: string) => {
+    const share = appState.shares.find((s) => s.id === shareId);
+    if (!share) return;
+
+    const verifyNotif: HolderNotification = {
+      id: `notif_${Date.now()}`,
+      title: '🛡️ Payment Verified & Locked by Holder',
+      message: `Your payment of ₹${share.amount} for "${share.expenseTitle}" has been verified and permanently locked by Holder.`,
+      type: 'PAYMENT_CONFIRMED',
+      timestamp: new Date().toISOString(),
+      read: false,
+      fromMemberId: holder.id,
+      toMemberId: share.debtorId,
+      targetMemberId: share.debtorId,
+      amount: share.amount,
+      billTitle: share.expenseTitle,
+      actionType: 'INFO',
+    };
+
+    updateState((prev) => ({
+      ...prev,
+      shares: prev.shares.map((s) =>
+        s.id === shareId
+          ? {
+              ...s,
+              isHolderVerified: true,
+              verifiedByHolderAt: new Date().toISOString(),
+            }
+          : s
+      ),
+      paymentClaims: prev.paymentClaims.map((c) =>
+        c.shareIds && c.shareIds.includes(shareId)
+          ? { ...c, status: 'CONFIRMED' as const, confirmedAt: new Date().toISOString() }
+          : c
+      ),
+      notifications: [verifyNotif, ...prev.notifications],
+    }));
+  };
+
+  // Holder rejects a settlement: reverts share back to pending Arrear
+  const handleHolderRejectShare = (shareId: string) => {
+    const share = appState.shares.find((s) => s.id === shareId);
+    if (!share) return;
+
+    const rejectNotif: HolderNotification = {
+      id: `notif_${Date.now()}`,
+      title: '✕ Settlement Reverted to Arrears',
+      message: `The settlement of ₹${share.amount} for "${share.expenseTitle}" was returned to your Arrear bucket by Holder as pending to give.`,
+      type: 'INFO',
+      timestamp: new Date().toISOString(),
+      read: false,
+      fromMemberId: holder.id,
+      toMemberId: share.debtorId,
+      targetMemberId: share.debtorId,
+      amount: share.amount,
+      billTitle: share.expenseTitle,
+      actionType: 'INFO',
+    };
+
+    updateState((prev) => ({
+      ...prev,
+      shares: prev.shares.map((s) =>
+        s.id === shareId
+          ? {
+              ...s,
+              status: 'ARREAR' as const,
+              settledAt: undefined,
+              isHolderVerified: false,
+              isCreditorConfirmed: false,
+            }
+          : s
+      ),
+      paymentClaims: prev.paymentClaims.map((c) =>
+        c.shareIds && c.shareIds.includes(shareId)
+          ? { ...c, status: 'REJECTED' as const }
+          : c
+      ),
+      notifications: [rejectNotif, ...prev.notifications],
     }));
   };
 
@@ -965,6 +1143,91 @@ export default function Home() {
     }));
   };
 
+  // Flat Info & Essential House Contacts
+  const handleAddContact = (contactData: Omit<FlatContact, 'id'>) => {
+    const newContact: FlatContact = {
+      ...contactData,
+      id: `contact_${Date.now()}`,
+    };
+    updateState((prev) => ({
+      ...prev,
+      contacts: [...prev.contacts, newContact],
+    }));
+  };
+
+  const handleUpdateContact = (updated: FlatContact) => {
+    updateState((prev) => ({
+      ...prev,
+      contacts: prev.contacts.map((c) => (c.id === updated.id ? updated : c)),
+    }));
+  };
+
+  const handleDeleteContact = (contactId: string) => {
+    updateState((prev) => ({
+      ...prev,
+      contacts: prev.contacts.filter((c) => c.id !== contactId),
+    }));
+  };
+
+  // Peer-to-Peer Personal Transfers & Money Requests
+  const handleCreatePeerTransfer = (data: {
+    fromMemberId: string;
+    toMemberIds: string[];
+    amount: number;
+    totalAmount?: number;
+    title: string;
+    notes?: string;
+    type: 'REQUEST' | 'TRANSFER';
+  }) => {
+    const transferId = `peer_${Date.now()}`;
+    const newTransfer: PeerTransferRequest = {
+      id: transferId,
+      ...data,
+      status: 'PENDING',
+      createdAt: new Date().toISOString(),
+    };
+
+    const sender = members.find((m) => m.id === data.fromMemberId);
+
+    // Create notifications for each targeted member
+    const newNotifs: HolderNotification[] = data.toMemberIds.map((toId) => {
+      const isReq = data.type === 'REQUEST';
+      return {
+        id: `notif_${Date.now()}_${toId}`,
+        title: isReq ? '💸 Personal Money Request' : '💸 Direct Transfer Sent',
+        message: isReq
+          ? `${sender?.name} requested ₹${data.amount} for "${data.title}"${data.notes ? ` (${data.notes})` : ''}. Pay directly via UPI.`
+          : `${sender?.name} sent you ₹${data.amount} for "${data.title}". Please verify!`,
+        type: 'PAYMENT_CLAIM',
+        timestamp: new Date().toISOString(),
+        read: false,
+        fromMemberId: data.fromMemberId,
+        toMemberId: toId,
+        targetMemberId: toId,
+        amount: data.amount,
+        billTitle: data.title,
+        actionType: 'CONFIRM_CLAIM',
+      };
+    });
+
+    updateState((prev) => ({
+      ...prev,
+      peerTransfers: [newTransfer, ...(prev.peerTransfers || [])],
+      notifications: [...newNotifs, ...prev.notifications],
+    }));
+  };
+
+  const handleSettlePeerTransfer = (transferId: string) => {
+    updateState((prev) => ({
+      ...prev,
+      peerTransfers: (prev.peerTransfers || []).map((t) =>
+        t.id === transferId
+          ? { ...t, status: 'COMPLETED' as const, settledAt: new Date().toISOString() }
+          : t
+      ),
+    }));
+  };
+
   // Mark notification read
   const handleMarkNotificationRead = (notifId: string) => {
     updateState((prev) => ({
@@ -1049,6 +1312,8 @@ export default function Home() {
             recurringBills={recurringBills}
             purchaseRequests={purchaseRequests}
             paymentClaims={paymentClaims}
+            contacts={contacts}
+            peerTransfers={appState.peerTransfers || []}
             holderPasscode={appState.holderPasscode || '1234'}
             onUpdateHolderPasscode={handleUpdateHolderPasscode}
             onOpenRecordExpense={() => setShowRecordExpense(true)}
@@ -1061,6 +1326,11 @@ export default function Home() {
             onRevertShare={handleRevertShare}
             onConfirmPaymentClaim={handleConfirmPaymentClaim}
             onRejectPaymentClaim={handleRejectPaymentClaim}
+            onHolderVerifyShare={handleHolderVerifyShare}
+            onHolderRejectShare={handleHolderRejectShare}
+            onAddContact={handleAddContact}
+            onUpdateContact={handleUpdateContact}
+            onDeleteContact={handleDeleteContact}
             onConvertRequestToExpense={handleConvertRequestToExpense}
             onOpenEditExpense={(exp) => setEditingExpense(exp)}
             onDeleteExpense={handleDeleteExpense}
@@ -1089,6 +1359,7 @@ export default function Home() {
             chores={chores}
             contacts={contacts}
             notices={notices}
+            peerTransfers={appState.peerTransfers || []}
             onOpenPayToMates={() => setShowPayToMates(true)}
             onOpenRecordExpense={() => setShowRecordExpense(true)}
             onOpenProfileModal={() => setShowProfileModal(true)}
@@ -1109,6 +1380,8 @@ export default function Home() {
             onDeleteChore={handleDeleteChore}
             onSettleShare={handleSettleShare}
             onRevertShare={handleRevertShare}
+            onCreatePeerTransfer={handleCreatePeerTransfer}
+            onSettlePeerTransfer={handleSettlePeerTransfer}
             onOpenHolderPortal={handleRequestHolderPortal}
             onUpdateMember={handleUpdateMember}
             onSubmitPaymentClaim={handleSubmitPaymentClaim}

@@ -11,6 +11,7 @@ import {
   FlatChore,
   FlatContact,
   FlatNotice,
+  PeerTransferRequest,
 } from '@/types';
 
 export interface AppState {
@@ -26,6 +27,7 @@ export interface AppState {
   chores: FlatChore[];
   contacts: FlatContact[];
   notices: FlatNotice[];
+  peerTransfers?: PeerTransferRequest[];
   holderPasscode?: string; // Changeable master passcode (default: '1234')
   lastUpdated: string;
 }
@@ -64,7 +66,43 @@ export const DEFAULT_NOTIFICATIONS: HolderNotification[] = [];
 export const DEFAULT_PERSONAL_EXPENSES: PersonalExpense[] = [];
 export const DEFAULT_PANTRY_ITEMS: PantryItem[] = [];
 export const DEFAULT_CHORES: FlatChore[] = [];
-export const DEFAULT_CONTACTS: FlatContact[] = [];
+export const DEFAULT_CONTACTS: FlatContact[] = [
+  {
+    id: 'contact_owner',
+    role: 'Owner / Landlord',
+    name: 'Flat Owner',
+    phone: '',
+    notes: 'Rent agreement & apartment lease queries',
+  },
+  {
+    id: 'contact_cook',
+    role: 'Cook',
+    name: 'House Cook',
+    phone: '',
+    notes: 'Daily breakfast & dinner schedule',
+  },
+  {
+    id: 'contact_plumber',
+    role: 'Plumber',
+    name: 'Emergency Plumber',
+    phone: '',
+    notes: 'Available for tap leaks, bathroom fittings & pipeline repairs',
+  },
+  {
+    id: 'contact_electrician',
+    role: 'Electrician',
+    name: 'Local Electrician',
+    phone: '',
+    notes: 'Main power, MCB trip, geyser & appliance issues',
+  },
+  {
+    id: 'contact_maid',
+    role: 'Maid / Housekeeping',
+    name: 'House Maid',
+    phone: '',
+    notes: 'Daily cleaning, sweeping & dusting',
+  },
+];
 export const DEFAULT_NOTICES: FlatNotice[] = [];
 
 export function getInitialAppState(): AppState {
@@ -81,6 +119,7 @@ export function getInitialAppState(): AppState {
     chores: DEFAULT_CHORES,
     contacts: DEFAULT_CONTACTS,
     notices: DEFAULT_NOTICES,
+    peerTransfers: [],
     holderPasscode: '1234',
     lastUpdated: new Date().toISOString(),
   };
@@ -107,8 +146,9 @@ export function loadAppState(): AppState {
       personalExpenses: parsed.personalExpenses || [],
       pantryItems: parsed.pantryItems || [],
       chores: parsed.chores || [],
-      contacts: parsed.contacts || initial.contacts,
+      contacts: parsed.contacts && parsed.contacts.length > 0 ? parsed.contacts : initial.contacts,
       notices: parsed.notices || initial.notices,
+      peerTransfers: parsed.peerTransfers || [],
     };
   } catch (err) {
     console.error('Failed to parse Flat-Mate storage, resetting to default', err);
@@ -154,6 +194,7 @@ export function clearAllTransactionsToEmpty(currentState: AppState): AppState {
     purchaseRequests: [],
     paymentClaims: [],
     personalExpenses: [],
+    peerTransfers: [],
     notifications: [
       {
         id: `notif_${Date.now()}`,

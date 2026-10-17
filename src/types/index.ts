@@ -77,6 +77,10 @@ export interface ExpenseShare {
   settledAt?: string;
   paymentNote?: string;
   revertedAt?: string;
+  isHolderVerified?: boolean; // True when locked as verified by Holder
+  verifiedByHolderAt?: string;
+  isCreditorConfirmed?: boolean; // True when receiving mate confirmed Yes
+  confirmedByCreditorAt?: string;
 }
 
 export interface PurchaseRequest {
@@ -186,4 +190,18 @@ export interface FlatNotice {
   content: string;
   isImportant?: boolean;
   createdAt: string;
+}
+
+export interface PeerTransferRequest {
+  id: string;
+  fromMemberId: string; // Requester or payer
+  toMemberIds: string[]; // Target selected members
+  amount: number; // Share per member in INR
+  totalAmount?: number;
+  title: string;
+  notes?: string;
+  type: 'REQUEST' | 'TRANSFER'; // REQUEST = asking money, TRANSFER = direct sending
+  status: 'PENDING' | 'COMPLETED' | 'REJECTED';
+  createdAt: string;
+  settledAt?: string;
 }

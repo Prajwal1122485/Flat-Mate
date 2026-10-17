@@ -248,7 +248,7 @@ export default function PortalNotificationModal({
                   <a
                     href={generateWhatsAppLink(
                       sender.phone,
-                      `Hi ${sender.name}! 👋 I received your time extension request for ${notification.billTitle || 'rent'}. That's totally fine, please clear it by the revised date. Thank you!`
+                      `Hi ${sender.name}! 👋 I received your time extension request for ${notification.billTitle || 'rent'}. That's totally fine, please clear it by the revised date. Thank you!\n\n🌐 Flat-Mate Portal: https://flat-mate-ashy.vercel.app/`
                     )}
                     target="_blank"
                     rel="noopener noreferrer"

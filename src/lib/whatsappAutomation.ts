@@ -63,7 +63,7 @@ export function buildWhatsAppReminderUrl(
   }
 
   const upiInfo = holderUpi ? ` via UPI: ${holderUpi}` : '';
-  const message = `Hi ${debtorName}! Gentle automated reminder from Flat-Mate 🏠: Your share for "${billTitle}" is ₹${amount}, due ${timingText}. Please transfer to Holder ${holderName}${upiInfo}. If you need more time, you can request an extension in the flat portal. Thank you!`;
+  const message = `Hi ${debtorName}! Gentle automated reminder from Flat-Mate 🏠: Your share for "${billTitle}" is ₹${amount}, due ${timingText}. Please transfer to Holder ${holderName}${upiInfo}. If you need more time, you can request an extension in the flat portal. Thank you!\n\n🌐 Flat-Mate Portal: https://flat-mate-ashy.vercel.app/`;
 
   const url = `https://wa.me/${destinationPhone}?text=${encodeURIComponent(message)}`;
   return { url, message };

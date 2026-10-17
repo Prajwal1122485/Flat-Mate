@@ -139,7 +139,8 @@ export function buildArrearReminderText(params: {
     msg += `👉 (You can also scan my QR code on our FlatMate Portal)\n\n`;
   }
 
-  msg += `Once paid, please mark it on the portal. Thanks! 🙌`;
+  msg += `Once paid, please mark it on the portal. Thanks! 🙌\n\n`;
+  msg += `🌐 Flat-Mate Portal: https://flat-mate-ashy.vercel.app/`;
   return msg;
 }
 
@@ -243,7 +244,8 @@ export function buildRentReminderText(params: {
     msg += `https://flat-mate-ashy.vercel.app/?action=pay&billId=${billId}&memberId=${memberId}&amount=${Math.round(perPersonShare)}\n\n`;
   }
 
-  msg += `Please complete the payment on or before the due date. Once paid, mark it in the app. Thank you! 🙏`;
+  msg += `Please complete the payment on or before the due date. Once paid, mark it in the app. Thank you! 🙏\n\n`;
+  msg += `🌐 Flat-Mate Portal: https://flat-mate-ashy.vercel.app/`;
   return msg;
 }
 

@@ -177,7 +177,7 @@ export default function Home() {
       if (!prev) return prev;
       const next = updater(prev);
       saveAppState(next);
-      pushStateToFirebase(next, 'flat_304');
+      pushStateToFirebase(next, 'flat');
       return next;
     });
   };

@@ -185,7 +185,7 @@ export default function ProfileSelector({
       if (mode === 'signup') {
         // 1. Firebase Auth Create Account
         try {
-          await signupWithEmail(cleanEmail, cleanPass);
+          await signupWithEmail(cleanEmail, cleanPass, cleanName);
         } catch (authErr: any) {
           // If email is already in use, try logging in with the given password
           if (authErr?.code === 'auth/email-already-in-use') {

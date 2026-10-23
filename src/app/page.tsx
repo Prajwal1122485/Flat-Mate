@@ -40,8 +40,6 @@ import {
   clearAllTransactionsToEmpty,
   exportBackupJSON,
   importBackupJSON,
-  getStoredHolderPasscode,
-  setStoredHolderPasscode,
 } from '@/lib/storage';
 import {
   subscribeToFirebaseSync,
@@ -62,13 +60,6 @@ export default function Home() {
   const [activePortalType, setActivePortalType] = useState<'holder' | 'member' | 'gatekeeper'>('gatekeeper');
   const [currentMemberId, setCurrentMemberId] = useState<string>('');
   const [firebaseStatus, setFirebaseStatus] = useState<FirebaseSyncStatus>('connecting');
-
-  // Holder Security & 10-Second Grace Relock State
-  const [holderUnlocked, setHolderUnlocked] = useState(false);
-  const [holderExitedTimestamp, setHolderExitedTimestamp] = useState<number | null>(null);
-  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
-  const [passcodeInput, setPasscodeInput] = useState('');
-  const [passcodeError, setPasscodeError] = useState(false);
 
   // Active Modals
   const [checkingMember, setCheckingMember] = useState<Member | null>(null);
@@ -124,7 +115,6 @@ export default function Home() {
           if (found) {
             setCurrentMemberId(found.id);
             if (found.isHolder) {
-              setHolderUnlocked(true);
               setActivePortalType('holder');
             } else {
               setActivePortalType('member');
@@ -175,7 +165,6 @@ export default function Home() {
           saveLocalSession(matched.id, email);
           setCurrentMemberId(matched.id);
           if (matched.isHolder) {
-            setHolderUnlocked(true);
             setActivePortalType('holder');
           } else {
             setActivePortalType('member');
@@ -202,20 +191,6 @@ export default function Home() {
       window.removeEventListener('flatmate-storage-update', reloadLocalState);
     };
   }, []);
-
-  // 10-Second Grace Relock Timer
-  useEffect(() => {
-    if (!holderUnlocked || !holderExitedTimestamp) return;
-
-    const timer = setInterval(() => {
-      if (Date.now() - holderExitedTimestamp >= 10000) {
-        setHolderUnlocked(false);
-        setHolderExitedTimestamp(null);
-      }
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [holderUnlocked, holderExitedTimestamp]);
 
   // Save state whenever modified (syncs to LocalStorage and Firestore cloud)
   const updateState = (updater: (prev: AppState) => AppState) => {
@@ -349,87 +324,26 @@ export default function Home() {
           );
         }) || null;
 
-  // Check if within 10-second grace window after exiting holder portal
-  const isWithinGracePeriod = () => {
-    if (!holderUnlocked) return false;
-    if (!holderExitedTimestamp) return true; // currently inside
-    return Date.now() - holderExitedTimestamp < 10000;
-  };
-
-  // Request to enter Holder Portal with 10s grace verification
-  const handleRequestHolderPortal = () => {
-    if (isWithinGracePeriod()) {
-      setHolderExitedTimestamp(null);
-      setCurrentMemberId(holder.id);
-      setActivePortalType('holder');
-    } else {
-      setPasscodeInput('');
-      setPasscodeError(false);
-      setShowPasscodeModal(true);
-    }
-  };
-
-  const handleVerifyHolderPasscode = (e: React.FormEvent) => {
-    e.preventDefault();
-    const storedCode = getStoredHolderPasscode();
-    const holderMem = appState.members.find((m) => m.isHolder || m.id === 'holder');
-    const correctCode = (
-      (storedCode && storedCode.trim()) ||
-      (appState.holderPasscode && appState.holderPasscode.trim()) ||
-      (holderMem?.passcode && holderMem.passcode.trim()) ||
-      '1234'
-    );
-
-    const entered = passcodeInput.trim();
-    const isMatch =
-      entered === correctCode ||
-      (appState.holderPasscode && entered === appState.holderPasscode.trim()) ||
-      (holderMem?.passcode && entered === holderMem.passcode.trim()) ||
-      (storedCode && entered === storedCode.trim());
-
-    if (isMatch) {
-      setHolderUnlocked(true);
-      setHolderExitedTimestamp(null);
-      setShowPasscodeModal(false);
-      setPasscodeInput('');
-      setPasscodeError(false);
-      setCurrentMemberId(holder.id);
-      setActivePortalType('holder');
-    } else {
-      setPasscodeError(true);
-    }
-  };
-
-  // Exit portal handler (records exit timestamp for 10-second grace lock)
+  // Exit portal handler (returns to login screen)
   const handleExitPortal = () => {
-    if (activePortalType === 'holder') {
-      setHolderExitedTimestamp(Date.now());
-    }
     setActivePortalType('gatekeeper');
   };
 
-  // Select profile
+  // Select member profile
   const handleSelectMemberPortal = (member: Member) => {
-    if (activePortalType === 'holder') {
-      setHolderExitedTimestamp(Date.now());
-    }
     setCurrentMemberId(member.id);
     setActivePortalType('member');
   };
 
-  // Select holder portal from login
+  // Select holder portal from authenticated login
   const handleSelectHolderPortal = (holderMem: Member) => {
-    setHolderUnlocked(true);
-    setHolderExitedTimestamp(null);
     setCurrentMemberId(holderMem.id);
     setActivePortalType('holder');
   };
 
-  // Sign out of Firebase and clear device session
+  // Sign out of Firebase and clear persistent session
   const handleSignOut = async () => {
     await signOutFirebase();
-    setHolderUnlocked(false);
-    setHolderExitedTimestamp(null);
     setActivePortalType('gatekeeper');
   };
 
@@ -439,20 +353,6 @@ export default function Home() {
       ...prev,
       members: prev.members.map((m) =>
         m.id === memberId ? { ...m, email } : m
-      ),
-    }));
-  };
-
-  // Update Holder Passcode
-  const handleUpdateHolderPasscode = (newCode: string) => {
-    const cleanCode = newCode.trim();
-    if (!cleanCode) return;
-    setStoredHolderPasscode(cleanCode);
-    updateState((prev) => ({
-      ...prev,
-      holderPasscode: cleanCode,
-      members: prev.members.map((m) =>
-        m.isHolder || m.id === 'holder' ? { ...m, passcode: cleanCode } : m
       ),
     }));
   };
@@ -1171,16 +1071,9 @@ export default function Home() {
 
   // Update Member
   const handleUpdateMember = (updated: Member) => {
-    const isHolder = updated.isHolder || updated.id === 'holder';
-    if (isHolder && updated.passcode && updated.passcode.trim()) {
-      setStoredHolderPasscode(updated.passcode.trim());
-    }
     updateState((prev) => ({
       ...prev,
       members: prev.members.map((m) => (m.id === updated.id ? updated : m)),
-      ...(isHolder && updated.passcode && updated.passcode.trim()
-        ? { holderPasscode: updated.passcode.trim() }
-        : {}),
     }));
   };
 
@@ -1471,7 +1364,6 @@ export default function Home() {
         currentMember={currentMember}
         allMembers={members}
         onSelectMember={handleSelectMemberPortal}
-        onOpenHolderPortal={handleRequestHolderPortal}
         onExitPortal={handleExitPortal}
         onSignOut={handleSignOut}
         activePortalType={activePortalType}
@@ -1506,10 +1398,9 @@ export default function Home() {
           <div className="py-4">
             <ProfileSelector
               members={members}
-              currentMember={currentMember}
               onSelectMemberPortal={handleSelectMemberPortal}
+              onAddNewMember={handleAddNewMember}
               onSelectHolderPortal={handleSelectHolderPortal}
-              onOpenHolderPortal={handleRequestHolderPortal}
               onLinkMemberEmail={handleLinkMemberEmail}
               firebaseStatus={firebaseStatus}
             />
@@ -1528,13 +1419,6 @@ export default function Home() {
             paymentClaims={paymentClaims}
             contacts={contacts}
             peerTransfers={appState.peerTransfers || []}
-            holderPasscode={
-              getStoredHolderPasscode() ||
-              appState.holderPasscode ||
-              holder.passcode ||
-              '1234'
-            }
-            onUpdateHolderPasscode={handleUpdateHolderPasscode}
             onOpenRecordExpense={() => setShowRecordExpense(true)}
             onOpenRentManager={() => setShowRentManager(true)}
             onOpenProfileModal={() => setShowProfileModal(true)}
@@ -1607,7 +1491,6 @@ export default function Home() {
             onRevertShare={handleRevertShare}
             onCreatePeerTransfer={handleCreatePeerTransfer}
             onSettlePeerTransfer={handleSettlePeerTransfer}
-            onOpenHolderPortal={handleRequestHolderPortal}
             onUpdateMember={handleUpdateMember}
             onSubmitPaymentClaim={handleSubmitPaymentClaim}
             deepLinkPayAction={deepLinkPayAction}
@@ -1618,93 +1501,6 @@ export default function Home() {
       </main>
 
       {/* ================= ALL INTERACTIVE POPUP MODALS ================= */}
-
-      {/* Holder Security Master Passcode Modal (Enforces 10-Second Grace Relock) */}
-      {showPasscodeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
-                  🔒
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
-                    Holder Access
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Master Ledger &amp; House Controls
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPasscodeModal(false);
-                  setPasscodeInput('');
-                  setPasscodeError(false);
-                }}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Please enter the Master Passcode to access the Holder Portal. Access remains active for 10 seconds after leaving.
-            </p>
-
-            <form onSubmit={handleVerifyHolderPasscode} className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  Master Passcode
-                </label>
-                <input
-                  type="password"
-                  autoFocus
-                  required
-                  placeholder="••••"
-                  value={passcodeInput}
-                  onChange={(e) => {
-                    setPasscodeInput(e.target.value);
-                    setPasscodeError(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-xl border text-center font-mono tracking-widest text-lg bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 ${
-                    passcodeError
-                      ? 'border-red-500 focus:ring-red-500'
-                      : 'border-slate-300 dark:border-slate-700 focus:ring-amber-500'
-                  }`}
-                />
-                {passcodeError && (
-                  <p className="text-xs text-red-500 font-semibold mt-1.5 text-center">
-                    Incorrect passcode. Please try again.
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPasscodeModal(false);
-                    setPasscodeInput('');
-                    setPasscodeError(false);
-                  }}
-                  className="py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="py-2.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl shadow-md transition-all active:scale-95"
-                >
-                  Unlock Portal
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Wide Screen Portal-to-Portal Notification Dialog */}
       <PortalNotificationModal

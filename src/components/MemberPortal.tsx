@@ -2,6 +2,8 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
+  Lock,
+  Mail,
   CreditCard,
   QrCode,
   FileDown,
@@ -44,6 +46,12 @@ import {
 } from '@/types';
 import QRCodeDisplay from './QRCodeDisplay';
 import SafeUpiPaymentModal from './SafeUpiPaymentModal';
+import {
+  updateUserPassword,
+  updateUserEmailAddress,
+  getFriendlyAuthErrorMessage,
+  saveLocalSession,
+} from '@/lib/firebaseAuth';
 import {
   formatINR,
   calculateMemberBillShare,
@@ -170,7 +178,26 @@ export default function MemberPortal({
     | 'incoming'
     | 'wishlist'
     | 'peerTransfers'
+    | 'account'
   >('arrears');
+
+  // Member Account Security State (Firebase Auth)
+  const [memberNewPassword, setMemberNewPassword] = useState('');
+  const [memberConfirmPassword, setMemberConfirmPassword] = useState('');
+  const [memberCurrentPasswordForPass, setMemberCurrentPasswordForPass] = useState('');
+  const [memberPasswordStatus, setMemberPasswordStatus] = useState<{
+    type: 'success' | 'error';
+    msg: string;
+  } | null>(null);
+  const [memberPasswordLoading, setMemberPasswordLoading] = useState(false);
+
+  const [memberNewEmail, setMemberNewEmail] = useState('');
+  const [memberCurrentPasswordForEmail, setMemberCurrentPasswordForEmail] = useState('');
+  const [memberEmailStatus, setMemberEmailStatus] = useState<{
+    type: 'success' | 'error';
+    msg: string;
+  } | null>(null);
+  const [memberEmailLoading, setMemberEmailLoading] = useState(false);
 
   // Peer Transfer & Money Request State
   const [peerMode, setPeerMode] = useState<'request' | 'transfer'>('request');
@@ -1085,6 +1112,20 @@ export default function MemberPortal({
               {pendingPeerRequestsForMe.length}
             </span>
           )}
+        </button>
+
+        {/* 12. Account & Security */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('account')}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+            activeTab === 'account'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <Lock className="w-4 h-4 text-emerald-500" />
+          <span>Account &amp; Security</span>
         </button>
       </div>
 
@@ -2922,6 +2963,239 @@ export default function MemberPortal({
                   })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 12: ACCOUNT SECURITY & CREDENTIALS ================= */}
+      {activeTab === 'account' && (
+        <div className="space-y-6 max-w-xl animate-in fade-in duration-200">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-indigo-500" />
+              <span>My Account Security &amp; Credentials</span>
+            </h2>
+            <p className="text-xs text-slate-500">
+              Manage your personal Flat-Mate login password and email address. Session is saved permanently on this device like Gmail &amp; YouTube.
+            </p>
+          </div>
+
+          <div className="p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-6 shadow-sm">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-lg ${
+                  currentMember.avatarBg || 'bg-indigo-600'
+                }`}
+              >
+                {currentMember.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  {currentMember.name}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Email: <strong>{currentMember.email || 'Not configured'}</strong>
+                </p>
+              </div>
+            </div>
+
+            {/* Form 1: Change Roommate Password */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setMemberPasswordStatus(null);
+                if (!memberNewPassword.trim() || memberNewPassword.length < 6) {
+                  setMemberPasswordStatus({
+                    type: 'error',
+                    msg: 'Password must be at least 6 characters long.',
+                  });
+                  return;
+                }
+                if (memberNewPassword !== memberConfirmPassword) {
+                  setMemberPasswordStatus({
+                    type: 'error',
+                    msg: 'Passwords do not match. Please re-enter.',
+                  });
+                  return;
+                }
+                setMemberPasswordLoading(true);
+                try {
+                  await updateUserPassword(
+                    memberNewPassword.trim(),
+                    memberCurrentPasswordForPass.trim() || undefined
+                  );
+                  setMemberPasswordStatus({
+                    type: 'success',
+                    msg: 'Your password was updated successfully in Firebase Auth!',
+                  });
+                  setMemberNewPassword('');
+                  setMemberConfirmPassword('');
+                  setMemberCurrentPasswordForPass('');
+                } catch (err: any) {
+                  setMemberPasswordStatus({
+                    type: 'error',
+                    msg: getFriendlyAuthErrorMessage(err?.code || '') || err.message,
+                  });
+                } finally {
+                  setMemberPasswordLoading(false);
+                }
+              }}
+              className="space-y-3.5"
+            >
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Lock className="w-4 h-4 text-indigo-500" />
+                <span>Change Your Login Password</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    New Password (min 6 chars) *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={memberNewPassword}
+                    onChange={(e) => setMemberNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    Confirm New Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={memberConfirmPassword}
+                    onChange={(e) => setMemberConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {memberPasswordStatus && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-medium ${
+                    memberPasswordStatus.type === 'success'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                      : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+                  }`}
+                >
+                  {memberPasswordStatus.msg}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={memberPasswordLoading || !memberNewPassword.trim()}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm transition-all"
+              >
+                {memberPasswordLoading ? 'Updating Password...' : 'Update My Password'}
+              </button>
+            </form>
+
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-4" />
+
+            {/* Form 2: Change Roommate Email */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setMemberEmailStatus(null);
+                const cleanEmail = memberNewEmail.trim().toLowerCase();
+                if (!cleanEmail) {
+                  setMemberEmailStatus({ type: 'error', msg: 'Please enter a valid email.' });
+                  return;
+                }
+                setMemberEmailLoading(true);
+                try {
+                  await updateUserEmailAddress(
+                    cleanEmail,
+                    memberCurrentPasswordForEmail.trim() || undefined
+                  );
+                  if (onUpdateMember) {
+                    onUpdateMember({ ...currentMember, email: cleanEmail });
+                  }
+                  saveLocalSession(currentMember.id, cleanEmail, currentMember.name, false);
+                  setMemberEmailStatus({
+                    type: 'success',
+                    msg: 'Your login email was updated successfully!',
+                  });
+                  setMemberNewEmail('');
+                  setMemberCurrentPasswordForEmail('');
+                } catch (err: any) {
+                  setMemberEmailStatus({
+                    type: 'error',
+                    msg: getFriendlyAuthErrorMessage(err?.code || '') || err.message,
+                  });
+                } finally {
+                  setMemberEmailLoading(false);
+                }
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1">
+                  <Mail className="w-4 h-4 text-emerald-500" />
+                  <span>Change Your Login Email</span>
+                </h4>
+                <p className="text-xs text-slate-500 mb-2">
+                  Current Email: <span className="font-bold text-indigo-600 dark:text-indigo-400">{currentMember.email || 'Not set'}</span>
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    New Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={memberNewEmail}
+                    onChange={(e) => setMemberNewEmail(e.target.value)}
+                    placeholder="e.g. rohan@gmail.com"
+                    className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    Current Password (for verification)
+                  </label>
+                  <input
+                    type="password"
+                    value={memberCurrentPasswordForEmail}
+                    onChange={(e) => setMemberCurrentPasswordForEmail(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {memberEmailStatus && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-medium ${
+                    memberEmailStatus.type === 'success'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                      : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+                  }`}
+                >
+                  {memberEmailStatus.msg}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={memberEmailLoading || !memberNewEmail.trim()}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm transition-all"
+              >
+                {memberEmailLoading ? 'Updating Email...' : 'Update My Email'}
+              </button>
+            </form>
           </div>
         </div>
       )}

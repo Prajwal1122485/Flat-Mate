@@ -55,6 +55,12 @@ import {
   generateDutyRosterPDF,
 } from '@/lib/pdfGenerator';
 import { testFirebaseConnection } from '@/lib/firebaseSync';
+import {
+  updateUserPassword,
+  updateUserEmailAddress,
+  getFriendlyAuthErrorMessage,
+  saveLocalSession,
+} from '@/lib/firebaseAuth';
 
 interface HolderPortalProps {
   holder: Member;
@@ -71,8 +77,6 @@ interface HolderPortalProps {
   onAddChore?: (chore: Omit<FlatChore, 'id'>) => void;
   onDeleteChore?: (choreId: string) => void;
   onCompleteChoreWithHistory?: (choreId: string) => void;
-  holderPasscode?: string;
-  onUpdateHolderPasscode?: (newPasscode: string) => void;
   onOpenRecordExpense: () => void;
   onOpenRentManager: () => void;
   onOpenProfileModal?: () => void;
@@ -108,8 +112,6 @@ export default function HolderPortal({
   recurringBills = [],
   purchaseRequests = [],
   paymentClaims = [],
-  holderPasscode = '1234',
-  onUpdateHolderPasscode,
   onOpenRecordExpense,
   onOpenRentManager,
   onOpenProfileModal,
@@ -131,7 +133,7 @@ export default function HolderPortal({
   onDeletePurchaseRequest,
   onDeletePaymentClaim,
   onUpdateBill,
-  onUpdateMember: _onUpdateMember,
+  onUpdateMember: onUpdateMember,
   onClearAllTransactions,
   onResetToCompletelyBlank,
   contacts = [],
@@ -195,9 +197,23 @@ export default function HolderPortal({
   const [subsetRequest, setSubsetRequest] = useState<PurchaseRequest | null>(null);
   const [subsetSelectedMemberIds, setSubsetSelectedMemberIds] = useState<string[]>([]);
 
-  // Passcode change state
-  const [newPasscode, setNewPasscode] = useState('');
-  const [passcodeSuccess, setPasscodeSuccess] = useState(false);
+  // Holder Account Security State (Firebase Auth)
+  const [holderNewPassword, setHolderNewPassword] = useState('');
+  const [holderConfirmPassword, setHolderConfirmPassword] = useState('');
+  const [holderCurrentPasswordForPass, setHolderCurrentPasswordForPass] = useState('');
+  const [holderPasswordStatus, setHolderPasswordStatus] = useState<{
+    type: 'success' | 'error';
+    msg: string;
+  } | null>(null);
+  const [holderPasswordLoading, setHolderPasswordLoading] = useState(false);
+
+  const [holderNewEmail, setHolderNewEmail] = useState('');
+  const [holderCurrentPasswordForEmail, setHolderCurrentPasswordForEmail] = useState('');
+  const [holderEmailStatus, setHolderEmailStatus] = useState<{
+    type: 'success' | 'error';
+    msg: string;
+  } | null>(null);
+  const [holderEmailLoading, setHolderEmailLoading] = useState(false);
 
   // Live Database Diagnostics State
   const [testingDb, setTestingDb] = useState(false);
@@ -2143,136 +2159,223 @@ export default function HolderPortal({
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                <KeyRound className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Change Master Holder Password
-                </h3>
-                <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
-                  <span>Current master password:</span>
-                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
-                    {holderPasscode}
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newPasscode.trim()) return;
-                if (onUpdateHolderPasscode) {
-                  onUpdateHolderPasscode(newPasscode.trim());
-                  setPasscodeSuccess(true);
-                  setNewPasscode('');
-                  setTimeout(() => setPasscodeSuccess(false), 3000);
-                }
-              }}
-              className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800"
-            >
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
-                  New Password / PIN
-                </label>
-                <input
-                  type="password"
-                  value={newPasscode}
-                  onChange={(e) => setNewPasscode(e.target.value)}
-                  placeholder="Enter new master password"
-                  className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              {passcodeSuccess && (
-                <p className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Password updated successfully!
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={!newPasscode.trim()}
-                className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm transition-all"
-              >
-                Update Password
-              </button>
-            </form>
-          </div>
-
-          {/* Flatmate Credentials & Passwords Management (Holder Authority) */}
-          <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-4">
-            <div className="flex items-center justify-between">
+          {/* Holder Master Firebase Credentials & Security */}
+          <div className="p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                  <Users className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-lg">
+                  👑
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Roommate Names &amp; Passwords
+                    Holder Master Account Security
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Holder master authority: View and change any roommate&apos;s name and login password.
+                    Logged in as <strong>{holder.email || 'Holder Master'}</strong> &bull; Permanent Google/Firebase Session
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              {members.map((m) => (
-                <div
-                  key={m.id}
-                  className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between gap-3 text-xs"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs ${m.avatarBg || 'bg-indigo-600'}`}>
-                      {m.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <span>{m.name}</span>
-                        {m.isHolder && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
-                            Holder
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-500 font-mono">
-                        Password: <span className="font-bold text-indigo-500">{m.isHolder ? (holderPasscode || m.passcode || '1234') : (m.passcode || '1234')}</span> &bull; {m.phone}
-                        {m.email && (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold block text-[10px]">
-                            Email: {m.email}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+            {/* Form 1: Change Holder Master Password */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setHolderPasswordStatus(null);
+                if (!holderNewPassword.trim() || holderNewPassword.length < 6) {
+                  setHolderPasswordStatus({
+                    type: 'error',
+                    msg: 'New password must be at least 6 characters long.',
+                  });
+                  return;
+                }
+                if (holderNewPassword !== holderConfirmPassword) {
+                  setHolderPasswordStatus({
+                    type: 'error',
+                    msg: 'Passwords do not match. Please re-enter.',
+                  });
+                  return;
+                }
+                setHolderPasswordLoading(true);
+                try {
+                  await updateUserPassword(
+                    holderNewPassword.trim(),
+                    holderCurrentPasswordForPass.trim() || undefined
+                  );
+                  setHolderPasswordStatus({
+                    type: 'success',
+                    msg: 'Holder password updated successfully in Firebase Auth!',
+                  });
+                  setHolderNewPassword('');
+                  setHolderConfirmPassword('');
+                  setHolderCurrentPasswordForPass('');
+                } catch (err: any) {
+                  setHolderPasswordStatus({
+                    type: 'error',
+                    msg: getFriendlyAuthErrorMessage(err?.code || '') || err.message,
+                  });
+                } finally {
+                  setHolderPasswordLoading(false);
+                }
+              }}
+              className="space-y-3.5"
+            >
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <KeyRound className="w-4 h-4 text-indigo-500" />
+                  <span>Change Holder Master Password</span>
+                </h4>
+              </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onOpenEditMember(m)}
-                    className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 font-bold transition-colors"
-                  >
-                    Change Name / Password
-                  </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    New Password (min 6 chars) *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={holderNewPassword}
+                    onChange={(e) => setHolderNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
 
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 space-y-1.5">
-            <div className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-              <Lock className="w-4 h-4 text-indigo-500" />
-              <span>10-Second Auto-Relock Security Policy</span>
-            </div>
-            <p>
-              When you exit the Holder portal or switch to flatmate view, access remains unlocked for exactly 10 seconds.
-              After 10 seconds of leaving the portal, you will be required to re-enter your password to ensure flatmate privacy and security.
-            </p>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    Confirm New Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={holderConfirmPassword}
+                    onChange={(e) => setHolderConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {holderPasswordStatus && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-medium ${
+                    holderPasswordStatus.type === 'success'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                      : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+                  }`}
+                >
+                  {holderPasswordStatus.msg}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={holderPasswordLoading || !holderNewPassword.trim()}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm transition-all"
+              >
+                {holderPasswordLoading ? 'Updating Password...' : 'Update Holder Password'}
+              </button>
+            </form>
+
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-4" />
+
+            {/* Form 2: Change Holder Master Email */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setHolderEmailStatus(null);
+                const cleanEmail = holderNewEmail.trim().toLowerCase();
+                if (!cleanEmail) {
+                  setHolderEmailStatus({ type: 'error', msg: 'Please enter a valid email.' });
+                  return;
+                }
+                setHolderEmailLoading(true);
+                try {
+                  await updateUserEmailAddress(
+                    cleanEmail,
+                    holderCurrentPasswordForEmail.trim() || undefined
+                  );
+                  if (onUpdateMember) {
+                    onUpdateMember({ ...holder, email: cleanEmail });
+                  }
+                  saveLocalSession(holder.id, cleanEmail, holder.name, true);
+                  setHolderEmailStatus({
+                    type: 'success',
+                    msg: 'Holder login email updated successfully!',
+                  });
+                  setHolderNewEmail('');
+                  setHolderCurrentPasswordForEmail('');
+                } catch (err: any) {
+                  setHolderEmailStatus({
+                    type: 'error',
+                    msg: getFriendlyAuthErrorMessage(err?.code || '') || err.message,
+                  });
+                } finally {
+                  setHolderEmailLoading(false);
+                }
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>Change Holder Master Email</span>
+                </h4>
+                <p className="text-xs text-slate-500 mb-2">
+                  Current Email: <span className="font-bold text-indigo-600 dark:text-indigo-400">{holder.email || 'Not set'}</span>
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    New Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={holderNewEmail}
+                    onChange={(e) => setHolderNewEmail(e.target.value)}
+                    placeholder="e.g. holder@gmail.com"
+                    className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    Current Password (for verification)
+                  </label>
+                  <input
+                    type="password"
+                    value={holderCurrentPasswordForEmail}
+                    onChange={(e) => setHolderCurrentPasswordForEmail(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {holderEmailStatus && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-medium ${
+                    holderEmailStatus.type === 'success'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                      : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+                  }`}
+                >
+                  {holderEmailStatus.msg}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={holderEmailLoading || !holderNewEmail.trim()}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm transition-all"
+              >
+                {holderEmailLoading ? 'Updating Email...' : 'Update Holder Email'}
+              </button>
+            </form>
           </div>
 
           {/* Firebase Real-Time Cloud Status Card */}

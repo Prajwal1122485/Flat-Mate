@@ -6,23 +6,37 @@ import {
   User,
   setPersistence,
   browserLocalPersistence,
+  updatePassword,
+  updateEmail,
+  sendPasswordResetEmail,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
 } from 'firebase/auth';
 import { auth, getFirebaseAuth } from './firebase';
 
-const SESSION_KEY = 'FLATMATE_AUTH_SESSION_V1';
+const SESSION_KEY = 'FLATMATE_AUTH_SESSION_V2';
 
 export interface LocalAuthSession {
   memberId: string;
   email: string;
+  name?: string;
+  isHolder?: boolean;
   loggedInAt: string;
 }
 
-export function saveLocalSession(memberId: string, email: string): void {
+export function saveLocalSession(
+  memberId: string,
+  email: string,
+  name?: string,
+  isHolder?: boolean
+): void {
   if (typeof window === 'undefined') return;
   try {
     const session: LocalAuthSession = {
       memberId,
       email: email.trim().toLowerCase(),
+      name,
+      isHolder,
       loggedInAt: new Date().toISOString(),
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -46,6 +60,8 @@ export function clearLocalSession(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(SESSION_KEY);
+    // Also clean up any legacy session keys
+    localStorage.removeItem('FLATMATE_AUTH_SESSION_V1');
   } catch (e) {
     console.error('Failed to clear local auth session', e);
   }
@@ -91,7 +107,7 @@ export async function signupWithEmail(email: string, password: string): Promise<
 }
 
 /**
- * Sign out of Firebase.
+ * Sign out of Firebase and wipe device auth session.
  */
 export async function signOutFirebase(): Promise<void> {
   clearLocalSession();
@@ -103,6 +119,67 @@ export async function signOutFirebase(): Promise<void> {
       console.warn('Firebase signout warning', e);
     }
   }
+}
+
+/**
+ * In-Portal Password Update: Changes user's Firebase account password directly.
+ */
+export async function updateUserPassword(
+  newPassword: string,
+  currentPassword?: string
+): Promise<void> {
+  const firebaseAuth = auth || getFirebaseAuth();
+  const user = firebaseAuth?.currentUser;
+  if (!user) {
+    throw new Error('No user is currently signed in. Please sign in again.');
+  }
+
+  if (currentPassword && user.email) {
+    try {
+      const cred = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, cred);
+    } catch (err: any) {
+      console.warn('Re-authentication before password change failed:', err);
+      throw new Error('Current password is incorrect. Please verify.');
+    }
+  }
+
+  await updatePassword(user, newPassword.trim());
+}
+
+/**
+ * In-Portal Email Address Update: Changes user's Firebase account email directly.
+ */
+export async function updateUserEmailAddress(
+  newEmail: string,
+  currentPassword?: string
+): Promise<void> {
+  const firebaseAuth = auth || getFirebaseAuth();
+  const user = firebaseAuth?.currentUser;
+  if (!user) {
+    throw new Error('No user is currently signed in. Please sign in again.');
+  }
+
+  if (currentPassword && user.email) {
+    try {
+      const cred = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, cred);
+    } catch (err: any) {
+      console.warn('Re-authentication before email change failed:', err);
+      throw new Error('Current password is required to change email. Please verify.');
+    }
+  }
+
+  await updateEmail(user, newEmail.trim());
+}
+
+/**
+ * Sends a password reset email if requested.
+ */
+export async function sendUserPasswordReset(email: string): Promise<void> {
+  const firebaseAuth = auth || getFirebaseAuth();
+  if (!firebaseAuth) throw new Error('Firebase Auth is not configured.');
+  await sendPasswordResetEmail(firebaseAuth, email.trim());
 }
 
 /**
@@ -128,9 +205,9 @@ export function getFriendlyAuthErrorMessage(errorCode: string): string {
     case 'auth/wrong-password':
       return 'Incorrect email or password. Please try again.';
     case 'auth/user-not-found':
-      return 'No account found with this email. Please click "Sign Up" to create one.';
+      return 'No account found with this email. Please click "Create Account" first.';
     case 'auth/email-already-in-use':
-      return 'This email is already registered. Please sign in instead.';
+      return 'This email is already registered. Please sign in instead, or use another email.';
     case 'auth/weak-password':
       return 'Password should be at least 6 characters.';
     case 'auth/invalid-email':
@@ -139,6 +216,8 @@ export function getFriendlyAuthErrorMessage(errorCode: string): string {
       return 'Too many attempts. Access is temporarily disabled. Please try again later.';
     case 'auth/network-request-failed':
       return 'Network error. Please check your internet connection.';
+    case 'auth/requires-recent-login':
+      return 'For security, please enter your current password to confirm this change.';
     default:
       return 'Authentication failed. Please check your details and try again.';
   }

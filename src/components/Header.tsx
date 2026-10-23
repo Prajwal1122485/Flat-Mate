@@ -16,7 +16,7 @@ interface HeaderProps {
   currentMember: Member;
   allMembers?: Member[];
   onSelectMember?: (member: Member) => void;
-  onOpenHolderPortal: () => void;
+  onOpenHolderPortal?: () => void;
   onExitPortal: () => void;
   onSignOut?: () => void;
   activePortalType?: 'holder' | 'member' | 'gatekeeper';
@@ -33,7 +33,6 @@ interface HeaderProps {
 
 export default function Header({
   currentMember,
-  onOpenHolderPortal,
   onExitPortal,
   onSignOut,
   activePortalType = 'gatekeeper',
@@ -136,23 +135,17 @@ export default function Header({
             </span>
           </div>
 
-          {/* Top Prominent Holder Access Button */}
-          <button
-            type="button"
-            onClick={onOpenHolderPortal}
-            className={`inline-flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm transform active:scale-95 ${
-              isHolderActive
-                ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-2 ring-indigo-500/40 ring-offset-1'
-                : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800'
-            }`}
-            title="Access the Holder Portal"
-          >
-            <ShieldCheck className="w-4 h-4 text-indigo-500 dark:text-indigo-400 fill-current" />
-            <span>Holder</span>
-            {isHolderActive && (
+          {/* Holder Master Badge - Shown ONLY when authenticated as Holder */}
+          {isHolderActive && (
+            <div
+              className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/40"
+              title="Authenticated Holder Master Portal"
+            >
+              <ShieldCheck className="w-4 h-4 text-white fill-current" />
+              <span>Holder</span>
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            )}
-          </button>
+            </div>
+          )}
 
           {/* Active Profile Info & Strict Lock/Exit Portal Button (Shown only when inside a portal) */}
           {isLoggedIn && (
@@ -175,7 +168,7 @@ export default function Header({
                 </div>
               </div>
 
-              {/* Secure Exit / Lock Button */}
+              {/* Secure Sign Out Button */}
               <button
                 type="button"
                 onClick={() => {
@@ -186,7 +179,7 @@ export default function Header({
                   }
                 }}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                title="Lock portal and return to FlatMate Directory"
+                title="Sign out of FlatMate"
               >
                 <span>Sign Out</span>
               </button>

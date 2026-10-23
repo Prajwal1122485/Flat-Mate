@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, UserCog, Trash2, Phone, CreditCard, Lock } from 'lucide-react';
+import { X, UserCog, Trash2, Phone, CreditCard, Lock, Mail } from 'lucide-react';
 import { Member } from '@/types';
 
 interface EditMemberModalProps {
@@ -36,6 +36,7 @@ export default function EditMemberModal({
 }: EditMemberModalProps) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [upiId, setUpiId] = useState('');
   const [budget, setBudget] = useState('');
   const [passcode, setPasscode] = useState('');
@@ -45,6 +46,7 @@ export default function EditMemberModal({
     if (member) {
       setName(member.name);
       setPhone(member.phone || '');
+      setEmail(member.email || '');
       setUpiId(member.upiId || '');
       setBudget(member.monthlyBudget ? member.monthlyBudget.toString() : '');
       setPasscode(member.passcode || '1234');
@@ -52,6 +54,7 @@ export default function EditMemberModal({
     } else {
       setName('');
       setPhone('');
+      setEmail('');
       setUpiId('');
       setBudget('');
       setPasscode('1234');
@@ -78,6 +81,7 @@ export default function EditMemberModal({
         avatarBg,
         monthlyBudget: finalBudget,
         passcode: passcode.trim() || '1234',
+        email: email.trim().toLowerCase() || undefined,
       };
       onAddNewMember(newM);
     } else if (member) {
@@ -85,6 +89,7 @@ export default function EditMemberModal({
         ...member,
         name: name.trim(),
         phone: phone.trim(),
+        email: email.trim().toLowerCase() || undefined,
         upiId: upiId.trim(),
         avatarBg,
         monthlyBudget: finalBudget,
@@ -153,6 +158,25 @@ export default function EditMemberModal({
                 className="w-full pl-9 pr-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
+              Email Address (Firebase Auto-Login)
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. rohan@gmail.com"
+                className="w-full pl-9 pr-3.5 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Signing in with this email logs directly into this profile without entering a password every time.
+            </p>
           </div>
 
           <div>

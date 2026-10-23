@@ -49,6 +49,12 @@ import {
   wipeFirestoreToBlank,
   FirebaseSyncStatus,
 } from '@/lib/firebaseSync';
+import {
+  subscribeToAuth,
+  signOutFirebase,
+  getLocalSession,
+  saveLocalSession,
+} from '@/lib/firebaseAuth';
 import { calculateExactSplit, formatINR } from '@/lib/calculations';
 
 export default function Home() {
@@ -110,6 +116,25 @@ export default function Home() {
         }
       }
 
+      // Check persistent Firebase Auth session (like Gmail / YouTube)
+      try {
+        const localSession = getLocalSession();
+        if (localSession && localSession.memberId) {
+          const found = loaded.members.find((m) => m.id === localSession.memberId);
+          if (found) {
+            setCurrentMemberId(found.id);
+            if (found.isHolder) {
+              setHolderUnlocked(true);
+              setActivePortalType('holder');
+            } else {
+              setActivePortalType('member');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error restoring local session', err);
+      }
+
       // Check for returning UPI payment session (in case browser reloaded when returning from UPI app)
       try {
         const storedUpi = localStorage.getItem('flatmate_pending_upi_session');
@@ -139,6 +164,26 @@ export default function Home() {
       }
     );
 
+    // Real-time Firebase Auth listener: auto-authenticates without asking again (like Gmail / YouTube)
+    const unsubscribeAuth = subscribeToAuth((user) => {
+      if (user && user.email) {
+        const email = user.email.toLowerCase();
+        const matched = loaded.members.find(
+          (m) => m.email?.toLowerCase() === email
+        );
+        if (matched) {
+          saveLocalSession(matched.id, email);
+          setCurrentMemberId(matched.id);
+          if (matched.isHolder) {
+            setHolderUnlocked(true);
+            setActivePortalType('holder');
+          } else {
+            setActivePortalType('member');
+          }
+        }
+      }
+    });
+
     // Cross-tab synchronization via native storage event and local custom event
     const reloadLocalState = () => {
       setAppState(loadAppState());
@@ -152,6 +197,7 @@ export default function Home() {
     window.addEventListener('flatmate-storage-update', reloadLocalState);
     return () => {
       unsubscribeFirebase();
+      unsubscribeAuth();
       window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('flatmate-storage-update', reloadLocalState);
     };
@@ -369,6 +415,32 @@ export default function Home() {
     }
     setCurrentMemberId(member.id);
     setActivePortalType('member');
+  };
+
+  // Select holder portal from login
+  const handleSelectHolderPortal = (holderMem: Member) => {
+    setHolderUnlocked(true);
+    setHolderExitedTimestamp(null);
+    setCurrentMemberId(holderMem.id);
+    setActivePortalType('holder');
+  };
+
+  // Sign out of Firebase and clear device session
+  const handleSignOut = async () => {
+    await signOutFirebase();
+    setHolderUnlocked(false);
+    setHolderExitedTimestamp(null);
+    setActivePortalType('gatekeeper');
+  };
+
+  // Link member profile to authenticated Email
+  const handleLinkMemberEmail = (memberId: string, email: string) => {
+    updateState((prev) => ({
+      ...prev,
+      members: prev.members.map((m) =>
+        m.id === memberId ? { ...m, email } : m
+      ),
+    }));
   };
 
   // Update Holder Passcode
@@ -1401,6 +1473,7 @@ export default function Home() {
         onSelectMember={handleSelectMemberPortal}
         onOpenHolderPortal={handleRequestHolderPortal}
         onExitPortal={handleExitPortal}
+        onSignOut={handleSignOut}
         activePortalType={activePortalType}
         notifications={notifications}
         onMarkNotificationRead={handleMarkNotificationRead}
@@ -1435,7 +1508,9 @@ export default function Home() {
               members={members}
               currentMember={currentMember}
               onSelectMemberPortal={handleSelectMemberPortal}
+              onSelectHolderPortal={handleSelectHolderPortal}
               onOpenHolderPortal={handleRequestHolderPortal}
+              onLinkMemberEmail={handleLinkMemberEmail}
               firebaseStatus={firebaseStatus}
             />
           </div>

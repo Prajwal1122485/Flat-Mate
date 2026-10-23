@@ -8,6 +8,7 @@ export interface Member {
   avatarBg?: string;
   monthlyBudget?: number;
   passcode?: string; // optional private PIN/passcode
+  email?: string; // Firebase Auth email
 }
 
 export type ExpenseCategory =

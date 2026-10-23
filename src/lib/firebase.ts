@@ -4,6 +4,7 @@
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getAuth, type Auth } from 'firebase/auth';
 
 export const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyB2nCkDt1zHTRjy_KxT0_pKlJMbDd9QkEo",
@@ -30,14 +31,21 @@ export function getFirebaseDb(): Firestore {
   return getFirestore(getFirebaseApp());
 }
 
+export function getFirebaseAuth(): Auth | null {
+  if (!isFirebaseConfigured()) return null;
+  return getAuth(getFirebaseApp());
+}
+
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
+let auth: Auth | null = null;
 
 try {
   app = getFirebaseApp();
   db = getFirebaseDb();
+  auth = getFirebaseAuth();
 } catch (err) {
   console.warn('Firebase initialization notice:', err);
 }
 
-export { app, db };
+export { app, db, auth };

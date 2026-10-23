@@ -18,6 +18,7 @@ interface HeaderProps {
   onSelectMember?: (member: Member) => void;
   onOpenHolderPortal: () => void;
   onExitPortal: () => void;
+  onSignOut?: () => void;
   activePortalType?: 'holder' | 'member' | 'gatekeeper';
   notifications: HolderNotification[];
   onMarkNotificationRead: (id: string) => void;
@@ -34,6 +35,7 @@ export default function Header({
   currentMember,
   onOpenHolderPortal,
   onExitPortal,
+  onSignOut,
   activePortalType = 'gatekeeper',
   notifications,
   onMarkNotificationRead,
@@ -176,11 +178,17 @@ export default function Header({
               {/* Secure Exit / Lock Button */}
               <button
                 type="button"
-                onClick={onExitPortal}
+                onClick={() => {
+                  if (onSignOut) {
+                    onSignOut();
+                  } else {
+                    onExitPortal();
+                  }
+                }}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                 title="Lock portal and return to FlatMate Directory"
               >
-                <span>Exit</span>
+                <span>Sign Out</span>
               </button>
             </div>
           )}

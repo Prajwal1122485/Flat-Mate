@@ -43,6 +43,7 @@ import {
   PeerTransferRequest,
 } from '@/types';
 import QRCodeDisplay from './QRCodeDisplay';
+import SafeUpiPaymentModal from './SafeUpiPaymentModal';
 import {
   formatINR,
   calculateMemberBillShare,
@@ -261,6 +262,13 @@ export default function MemberPortal({
   const [showUpiReturnConfirmModal, setShowUpiReturnConfirmModal] = useState(false);
   const [directPayModalBill, setDirectPayModalBill] = useState<RecurringBill | null>(null);
   const [paymentClaimToast, setPaymentClaimToast] = useState<string | null>(null);
+  const [activeSafeUpiPayment, setActiveSafeUpiPayment] = useState<{
+    recipient: Member;
+    amount: number;
+    billTitle: string;
+    shareId?: string;
+    billId?: string;
+  } | null>(null);
 
   // Deep link routing effect
   useEffect(() => {
@@ -1322,30 +1330,25 @@ export default function MemberPortal({
                         <span>Send Message</span>
                       </button>
 
-                      {/* Pay via UPI */}
-                      <a
-                        href={
-                          creditor.upiId
-                            ? `upi://pay?pa=${creditor.upiId}&pn=${encodeURIComponent(creditor.name)}&am=${share.amount}&cu=INR&tn=${encodeURIComponent(share.expenseTitle)}`
-                            : undefined
-                        }
-                        onClick={(e) => {
+                      {/* Safe UPI Pay */}
+                      <button
+                        type="button"
+                        onClick={() => {
                           if (!creditor.upiId) {
-                            e.preventDefault();
                             alert(`${creditor.name} has not set a UPI ID yet.`);
                             return;
                           }
-                          handleInitiateUpiPayment({
-                            shareId: share.id,
-                            billTitle: share.expenseTitle,
-                            amount: share.amount,
+                          setActiveSafeUpiPayment({
                             recipient: creditor,
+                            amount: share.amount,
+                            billTitle: share.expenseTitle,
+                            shareId: share.id,
                           });
                         }}
-                        className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95"
+                        className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95 flex items-center gap-1.5"
                       >
-                        Pay via UPI
-                      </a>
+                        <span>⚡ Pay UPI</span>
+                      </button>
 
                       {/* Settle */}
                       {onSettleShare && (
@@ -1635,30 +1638,24 @@ export default function MemberPortal({
                     {isParticipating && (
                       <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <a
-                            href={
-                              holder.upiId
-                                ? `upi://pay?pa=${holder.upiId}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(shareData.total)}&cu=INR&tn=${encodeURIComponent(bill.title)}`
-                                : undefined
-                            }
-                            onClick={(e) => {
+                          <button
+                            type="button"
+                            onClick={() => {
                               if (!holder.upiId) {
-                                e.preventDefault();
                                 alert('Holder has not configured a UPI ID yet. Please check with Holder or view QR.');
                                 return;
                               }
-                              handleInitiateUpiPayment({
-                                billId: bill.id,
-                                billTitle: bill.title,
-                                amount: shareData.total,
+                              setActiveSafeUpiPayment({
                                 recipient: holder,
-                                breakdownStr: formulaStr,
+                                amount: shareData.total,
+                                billTitle: bill.title,
+                                billId: bill.id,
                               });
                             }}
                             className="flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm transition-transform active:scale-95 text-center"
                           >
                             <span>⚡ Pay UPI ({formatINR(shareData.total)})</span>
-                          </a>
+                          </button>
 
                           <button
                             type="button"
@@ -1992,30 +1989,25 @@ export default function MemberPortal({
                           <span>Ask by Message</span>
                         </button>
 
-                        {/* Pay via UPI */}
-                        <a
-                          href={
-                            creditor.upiId
-                              ? `upi://pay?pa=${creditor.upiId}&pn=${encodeURIComponent(creditor.name)}&am=${share.amount}&cu=INR&tn=${encodeURIComponent(share.expenseTitle)}`
-                              : undefined
-                          }
-                          onClick={(e) => {
+                        {/* Safe UPI Pay */}
+                        <button
+                          type="button"
+                          onClick={() => {
                             if (!creditor.upiId) {
-                              e.preventDefault();
                               alert(`${creditor.name} has not configured a UPI ID yet.`);
                               return;
                             }
-                            handleInitiateUpiPayment({
-                              shareId: share.id,
-                              billTitle: share.expenseTitle,
-                              amount: share.amount,
+                            setActiveSafeUpiPayment({
                               recipient: creditor,
+                              amount: share.amount,
+                              billTitle: share.expenseTitle,
+                              shareId: share.id,
                             });
                           }}
                           className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-sm"
                         >
-                          Pay via UPI
-                        </a>
+                          ⚡ Pay via UPI
+                        </button>
                       </div>
                     </div>
                   );
@@ -3604,30 +3596,24 @@ export default function MemberPortal({
 
                   {/* Big Action Buttons */}
                   <div className="space-y-2 pt-1">
-                    <a
-                      href={
-                        holder.upiId
-                          ? `upi://pay?pa=${holder.upiId}&pn=${encodeURIComponent(holder.name)}&am=${Math.round(shareData.total)}&cu=INR&tn=${encodeURIComponent(directPayModalBill.title)}`
-                          : undefined
-                      }
-                      onClick={(e) => {
+                    <button
+                      type="button"
+                      onClick={() => {
                         if (!holder.upiId) {
-                          e.preventDefault();
                           alert('Holder UPI ID is not configured. Please use QR code or transfer directly.');
                           return;
                         }
-                        handleInitiateUpiPayment({
-                          billId: directPayModalBill.id,
-                          billTitle: directPayModalBill.title,
-                          amount: shareData.total,
+                        setActiveSafeUpiPayment({
                           recipient: holder,
-                          breakdownStr: formulaStr,
+                          amount: shareData.total,
+                          billTitle: directPayModalBill.title,
+                          billId: directPayModalBill.id,
                         });
                       }}
                       className="w-full py-3 px-4 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 rounded-2xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2 text-center"
                     >
                       <span>⚡ Open Google Pay / PhonePe / Paytm &bull; {formatINR(shareData.total)}</span>
-                    </a>
+                    </button>
 
                     <button
                       type="button"
@@ -3654,6 +3640,33 @@ export default function MemberPortal({
             })()}
           </div>
         </div>
+      )}
+
+      {/* ================= MODAL: UNIVERSAL SAFE UPI PAYMENT ================= */}
+      {activeSafeUpiPayment && (
+        <SafeUpiPaymentModal
+          isOpen={!!activeSafeUpiPayment}
+          onClose={() => setActiveSafeUpiPayment(null)}
+          recipient={activeSafeUpiPayment.recipient}
+          amount={activeSafeUpiPayment.amount}
+          billTitle={activeSafeUpiPayment.billTitle}
+          onPaymentClaimed={(note) => {
+            if (onSubmitPaymentClaim) {
+              onSubmitPaymentClaim({
+                fromMemberId: currentMember.id,
+                toMemberId: activeSafeUpiPayment.recipient.id,
+                amount: activeSafeUpiPayment.amount,
+                note: note || `Payment for ${activeSafeUpiPayment.billTitle}`,
+                shareIds: activeSafeUpiPayment.shareId ? [activeSafeUpiPayment.shareId] : undefined,
+              });
+            }
+            setPaymentClaimToast(
+              `Payment claim for ${formatINR(activeSafeUpiPayment.amount)} sent to ${activeSafeUpiPayment.recipient.name}!`
+            );
+            setTimeout(() => setPaymentClaimToast(null), 4000);
+            setActiveSafeUpiPayment(null);
+          }}
+        />
       )}
 
       {/* Floating Toast Notification */}
